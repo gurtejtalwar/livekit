@@ -26,12 +26,12 @@ logger = logging.getLogger("inbound-agent")
 for noisy_logger in ["pymongo", "pymongo.topology", "pymongo.connection"]:
     logging.getLogger(noisy_logger).setLevel(logging.WARNING)
 
-@contextmanager
-def timer(name="Operation"):
-    start = time.perf_counter()
-    yield
-    end = time.perf_counter()
-    print(f"TIMER: {name} took {end - start:.4f} seconds")
+# @contextmanager
+# def timer(name="Operation"):
+#     start = time.perf_counter()
+#     yield
+#     end = time.perf_counter()
+#     print(f"TIMER: {name} took {end - start:.4f} seconds")
 
 # Function tools to enhance your agent's capabilities
 @function_tool
@@ -47,69 +47,95 @@ import os
 from llama_index.core import VectorStoreIndex, StorageContext
 from llama_index.vector_stores.pinecone import PineconeVectorStore
 from pinecone import Pinecone
+from pymongo import MongoClient
+from motor.motor_asyncio import AsyncIOMotorClient
+from functools import lru_cache
 
 load_dotenv(override=True)
 
-###### PINECONE SETUP ######
-# Initialize Pinecone client
-# index = pc.Index("ai-tutor")
+# ---------------------- TIMER UTILITY ----------------------
+class Timer:
+    def __init__(self, name):
+        self.name = name
 
-# Wrap in a LlamaIndex vector store
-with timer("Pinecone Initialization"):
+    def __enter__(self):
+        self.start = time.perf_counter()
+        return self
+
+    def __exit__(self, *exc):
+        dur = time.perf_counter() - self.start
+        print(f"TIMER: {self.name} took {dur:.4f} seconds")
+
+# ---------------------- GLOBAL SETUP ----------------------
+with Timer("Pinecone + Index Initialization"):
     pc = Pinecone(api_key=os.environ["PINECONE_API_KEY"])
     pc_index = pc.Index("stage-itsbot")
-    vector_store = PineconeVectorStore(pinecone_index=pc_index, namespace="4802b88d-d493-4648-a04d-8dc5585cf271")
-    storage_context = StorageContext.from_defaults(vector_store=vector_store)
-    embed_model = OpenAIEmbedding(api_key=os.environ["OPENAI_API_KEY"],model="text-embedding-3-small")
-    index = VectorStoreIndex.from_vector_store(vector_store=vector_store, embed_model=embed_model)
+    vector_store = PineconeVectorStore(
+        pinecone_index=pc_index,
+        namespace="4802b88d-d493-4648-a04d-8dc5585cf271"
+    )
+    embed_model = OpenAIEmbedding(
+        api_key=os.environ["OPENAI_API_KEY"],
+        model="text-embedding-3-small"
+    )
+    index = VectorStoreIndex.from_vector_store(
+        vector_store=vector_store,
+        embed_model=embed_model
+    )
+    retriever = index.as_retriever(similarity_top_k=1, use_async=True)
 
-from pymongo import MongoClient
-with timer("Mongo Intialization"):
-    mongo_client = MongoClient(os.environ["MONGO_URI"])  # e.g., "mongodb://localhost:27017"
-    db = mongo_client["itsbot-db"]  # replace with your DB name
+with Timer("Mongo Initialization"):
+    mongo_client = AsyncIOMotorClient(os.environ["MONGO_URI"])
+    db = mongo_client["itsbot-db"]
     parents_collection = db["parentdocs"]
 
+# ---------------------- CACHED EMBEDDINGS ----------------------
+@lru_cache(maxsize=1000)
+def get_cached_embedding(text: str):
+    """Cache embeddings for repeated/similar queries."""
+    return embed_model.get_text_embedding(text)
+
+# ---------------------- MAIN PIPELINE ----------------------
 @llm.function_tool
-async def ask_knowledge_base(question: str) -> str:
-    from llama_index.llms.openai import OpenAI
-# ---- Retriever Function ----
-    """Query the Pinecone index (knowledge base) for relevant information."""
-    from llama_index.llms.openai import OpenAI
-    with timer("Retriever Initialization"):
-        retriever  = index.as_query_engine(similarity_top_k=2, 
-                                            use_async=True, 
-                                            llm=OpenAI(
-                                                api_key=os.environ["OPENAI_API_KEY"],
-                                                model="gpt-4o-mini")
-                                            )
-    with timer("Fetching Retriever"):
-        results = retriever.retrieve(question)
+async def ask_knowledge_base(question: str):
+    """Retrieve relevant documents from Pinecone + fetch full docs from Mongo."""
+    with Timer("Full Query"):
 
-    # Filter nodes by similarity >= 0.7
-    filtered_nodes = [node for node in results if node.score >= 0.6]
+        # (1) Get (possibly cached) embedding
+        with Timer("Embedding Creation"):
+            query_vec = get_cached_embedding(question)
 
-    if not filtered_nodes:
-        return "⚠️ No results found with similarity >= 0.7"
+        # (2) Perform Pinecone query (async)
+        with Timer("Retriever Query"):
+            results = await retriever.aretrieve(question)
 
-    # Fetch documents from MongoDB based on doc_id
-    fetched_docs = []
-    for node_with_score in filtered_nodes:
-        doc_id = node_with_score.node.metadata.get("doc_id")
-        if doc_id:
-            with timer("Fetching Mongo"):
-                doc = parents_collection.find_one({"parentDocId": doc_id})
-            if doc:
-                fetched_docs.append(doc.get("data", ""))  # assuming the string is in 'content'
+        # (3) Extract doc IDs
+        ids = [
+            r.node.metadata.get("doc_id")
+            for r in results
+            if r.node.metadata.get("doc_id")
+        ]
 
-    if not fetched_docs:
-        return "⚠️ No corresponding documents found in MongoDB"
+        if not ids:
+            return {"retriever_results": results, "mongo_docs": []}
 
-    # Combine or return first match
-    print(f"\nQuery results are:\n{fetched_docs}")
+        # (4) Fetch Mongo docs asynchronously
+        async def fetch_mongo(ids):
+            cursor = parents_collection.find(
+                {"parentDocId": {"$in": ids}},
+                {"_id": 0, "data": 1}
+            )
+            docs = await cursor.to_list(length=None)
 
-    return "\n\n".join(fetched_docs)
+            data_values = [doc["data"] for doc in docs if "data" in doc]
 
-###### PINECONE SETUP ######
+            return "\n".join(data_values)
+
+        with Timer("Mongo Fetch"):
+            mongo_docs = await fetch_mongo(ids)
+
+        print(f"Mongo Docs: \n{mongo_docs}")
+        return mongo_docs
 
 ###### Inbound RAG Agent ######
 class InboundAgent(Agent):
@@ -133,11 +159,12 @@ async def entrypoint(ctx: JobContext):
 
     agent = InboundAgent()
     session = AgentSession(
-        stt=deepgram.STT(language="multi"),
+        stt=deepgram.STT(language="en"),
         llm=openai.LLM(model="gpt-4o-mini", tool_choice="required"),
         tts=cartesia.TTS(),
         vad=silero.VAD.load(),
         turn_detection=MultilingualModel(),
+        preemptive_generation=True,
     )
 
     await session.start(
@@ -145,15 +172,11 @@ async def entrypoint(ctx: JobContext):
         agent=agent,
         room_input_options=RoomInputOptions(
             noise_cancellation=noise_cancellation.BVCTelephony(),
-            close_on_disconnect=False,
-        ),
-        room_output_options=RoomOutputOptions(
-            audio_enabled=True,  # Avatar handles audio
+            close_on_disconnect=True,
         ),
     )
-    await session.generate_reply(
-        instructions="Greet the user as an ITSCNC customer service representative. Speak english."
-    )
+    time.sleep(0.2)
+    await session.say("Thanks for calling ItsCNC customer support. My name is Lala, let me know how I can assist you")
 
 if __name__ == "__main__":
     # Configure logging for better debugging
