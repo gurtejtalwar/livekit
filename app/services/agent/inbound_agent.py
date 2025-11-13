@@ -11,15 +11,18 @@ from livekit.agents import (
     llm,
     RoomInputOptions,
     RoomOutputOptions,
-    function_tool
 )
+from livekit.agents.llm import function_tool
 from livekit.plugins import deepgram, openai, cartesia, silero, noise_cancellation
 from llama_index.core.schema import MetadataMode
+from llama_index.embeddings.openai import OpenAIEmbedding
+
 from livekit.agents.voice.agent import ModelSettings
 from livekit.plugins.turn_detector.multilingual import MultilingualModel
 
 logger = logging.getLogger("inbound-agent")
-
+for noisy_logger in ["pymongo", "pymongo.topology", "pymongo.connection"]:
+    logging.getLogger(noisy_logger).setLevel(logging.WARNING)
 
 # Function tools to enhance your agent's capabilities
 @function_tool
@@ -36,100 +39,80 @@ from llama_index.core import VectorStoreIndex, StorageContext
 from llama_index.vector_stores.pinecone import PineconeVectorStore
 from pinecone import Pinecone
 
-load_dotenv()
+load_dotenv(override=True)
 
 ###### PINECONE SETUP ######
 # Initialize Pinecone client
+embed_model = OpenAIEmbedding(api_key=os.environ["OPENAI_API_KEY"],model="text-embedding-3-small")
 pc = Pinecone(api_key=os.environ["PINECONE_API_KEY"])
-index = pc.Index("ai-tutor")
+# index = pc.Index("ai-tutor")
+index = pc.Index("stage-itsbot")
 
 # Wrap in a LlamaIndex vector store
-vector_store = PineconeVectorStore(pinecone_index=index)
+vector_store = PineconeVectorStore(pinecone_index=index, namespace="4802b88d-d493-4648-a04d-8dc5585cf271")
 storage_context = StorageContext.from_defaults(vector_store=vector_store)
-index = VectorStoreIndex.from_vector_store(vector_store=vector_store)
+index = VectorStoreIndex.from_vector_store(vector_store=vector_store, embed_model=embed_model)
 
-@function_tool
+from pymongo import MongoClient
+mongo_client = MongoClient(os.environ["MONGO_URI"])  # e.g., "mongodb://localhost:27017"
+db = mongo_client["itsbot-db"]  # replace with your DB name
+parents_collection = db["parentdocs"]
+
+@llm.function_tool
 async def ask_knowledge_base(question: str) -> str:
+    from llama_index.llms.openai import OpenAI
+# ---- Retriever Function ----
     """Query the Pinecone index (knowledge base) for relevant information."""
-    query_engine = index.as_query_engine(similarity_top_k=2)
-    response = query_engine.query(question)
-    return response.response
+    from llama_index.llms.openai import OpenAI
+    retriever  = index.as_query_engine(similarity_top_k=2, 
+                                         use_async=True, 
+                                         llm=OpenAI(
+                                             api_key=os.environ["OPENAI_API_KEY"],
+                                             model="gpt-4o-mini")
+                                        )
+    results = retriever.retrieve(question)
+
+    # Filter nodes by similarity >= 0.7
+    filtered_nodes = [node for node in results if node.score >= 0.6]
+
+    if not filtered_nodes:
+        return "⚠️ No results found with similarity >= 0.7"
+
+    # Fetch documents from MongoDB based on doc_id
+    fetched_docs = []
+    for node_with_score in filtered_nodes:
+        doc_id = node_with_score.node.metadata.get("doc_id")
+        if doc_id:
+            doc = parents_collection.find_one({"parentDocId": doc_id})
+            if doc:
+                fetched_docs.append(doc.get("data", ""))  # assuming the string is in 'content'
+
+    if not fetched_docs:
+        return "⚠️ No corresponding documents found in MongoDB"
+
+    # Combine or return first match
+    print(f"\nQuery results are:\n{fetched_docs}")
+
+    return "\n\n".join(fetched_docs)
+
 ###### PINECONE SETUP ######
 
 ###### Inbound RAG Agent ######
 class InboundAgent(Agent):
     def __init__(self):
         super().__init__(
-            instructions=("""You are a friendly and helpful AI assistant answering phone calls.
-            
-            Your personality:
-            - Professional yet warm and approachable
-            - Speak clearly and at a moderate pace for phone calls
-            - Keep responses concise but complete
-            - Ask clarifying questions when needed
-            
-            Your capabilities:
-            - Answer questions on a wide range of topics
-            - Provide weather information when asked
-            - Tell the current time
-            - Have natural conversations
-            
-            Always identify yourself as an AI assistant when asked.
-            Keep responses conversational and under 30 seconds for phone clarity."""),
+            instructions=(
+                "You are an ITSCNC customer service AI assistant. "
+                "For ANY ITSCNC-related or factual question, you MUST use the 'ask_knowledge_base' tool FIRST. "
+                "Do not rely on your internal memory. "
+                "After receiving the tool's output, use it to construct a conversational, human-like answer. "
+                "If the tool returns no relevant data, politely say you don't have enough information. "
+                "Keep responses concise and optimized for spoken delivery. "
+                "Format numbers naturally (e.g., 'five hundred and twelve gigabytes')."
+            ),
             tools=[get_current_time, ask_knowledge_base],
         )
-    #     self.index = index
-    # async def llm_node(
-    #     self,
-    #     chat_ctx: llm.ChatContext,
-    #     tools: list[llm.FunctionTool],
-    #     model_settings: ModelSettings,
-    # ):
-    #     user_msg = chat_ctx.items[-1]
-    #     assert isinstance(user_msg, llm.ChatMessage) and user_msg.role == "user"
-    #     user_query = user_msg.text_content
-    #     assert user_query is not None
 
-    #     retriever = self.index.as_retriever()
-    #     nodes = await retriever.aretrieve(user_query)
-
-    #     instructions = "Context that might help answer the user's question:"
-    #     for node in nodes:
-    #         node_content = node.get_content(metadata_mode=MetadataMode.LLM)
-    #         instructions += f"\n\n{node_content}"
-
-    #     # update the instructions for this turn, you may use some different methods
-    #     # to inject the context into the chat_ctx that fits the LLM you are using
-    #     system_msg = chat_ctx.items[0]
-    #     if isinstance(system_msg, llm.ChatMessage) and system_msg.role == "system":
-    #         # TODO(long): provide an api to update the instructions of chat_ctx
-    #         system_msg.content.append(instructions)
-    #     else:
-    #         chat_ctx.items.insert(0, llm.ChatMessage(role="system", content=[instructions]))
-    #     print(f"update instructions: {instructions[:100].replace('\n', '\\n')}...")
-
-    #     # update the instructions for agent
-    #     # await self.update_instructions(instructions)
-
-    #     return Agent.default.llm_node(self, chat_ctx, tools, model_settings)
-
-###### Inbound RAG Agent ######
-
-# async def entrypoint(ctx: JobContext):
-#     """Main entry point for the telephony voice agent."""
-#     await ctx.connect(auto_subscribe=AutoSubscribe.AUDIO_ONLY)
-    
-#     # Wait for participant (caller) to join
-#     participant = await ctx.wait_for_participant()
-#     logger.info(f"Phone call connected from participant: {participant.identity}")
-    
-    
-#     # Configure the voice processing pipeline optimized for telephony
-#     agent = InboundAgent(index)
-#     session = AgentSession(),
-#     await session.start(agent=agent, room=ctx.room)
-
-#     await session.say("Hey, how can I help you today?", allow_interruptions=True)
 
 async def entrypoint(ctx: JobContext):
     await ctx.connect(auto_subscribe=AutoSubscribe.AUDIO_ONLY)
@@ -137,7 +120,7 @@ async def entrypoint(ctx: JobContext):
     agent = InboundAgent()
     session = AgentSession(
         stt=deepgram.STT(language="multi"),
-        llm=openai.LLM(),
+        llm=openai.LLM(model="gpt-4o-mini", tool_choice="required"),
         tts=cartesia.TTS(),
         vad=silero.VAD.load(),
         turn_detection=MultilingualModel(),
@@ -145,7 +128,7 @@ async def entrypoint(ctx: JobContext):
 
     await session.start(
         room=ctx.room,
-        agent=InboundAgent(),
+        agent=agent,
         room_input_options=RoomInputOptions(
             noise_cancellation=noise_cancellation.BVCTelephony(),
             close_on_disconnect=False,
@@ -154,9 +137,8 @@ async def entrypoint(ctx: JobContext):
             audio_enabled=True,  # Avatar handles audio
         ),
     )
-
     await session.generate_reply(
-        instructions="Greet the user as an iPear customer service representative. Speak english."
+        instructions="Greet the user as an ITSCNC customer service representative. Speak english."
     )
 
 if __name__ == "__main__":
