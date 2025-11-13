@@ -1,4 +1,6 @@
 import asyncio
+import time
+from contextlib import contextmanager
 import os
 import logging
 from livekit.agents import (
@@ -24,6 +26,13 @@ logger = logging.getLogger("inbound-agent")
 for noisy_logger in ["pymongo", "pymongo.topology", "pymongo.connection"]:
     logging.getLogger(noisy_logger).setLevel(logging.WARNING)
 
+@contextmanager
+def timer(name="Operation"):
+    start = time.perf_counter()
+    yield
+    end = time.perf_counter()
+    print(f"TIMER: {name} took {end - start:.4f} seconds")
+
 # Function tools to enhance your agent's capabilities
 @function_tool
 async def get_current_time() -> str:
@@ -43,20 +52,22 @@ load_dotenv(override=True)
 
 ###### PINECONE SETUP ######
 # Initialize Pinecone client
-embed_model = OpenAIEmbedding(api_key=os.environ["OPENAI_API_KEY"],model="text-embedding-3-small")
-pc = Pinecone(api_key=os.environ["PINECONE_API_KEY"])
 # index = pc.Index("ai-tutor")
-index = pc.Index("stage-itsbot")
 
 # Wrap in a LlamaIndex vector store
-vector_store = PineconeVectorStore(pinecone_index=index, namespace="4802b88d-d493-4648-a04d-8dc5585cf271")
-storage_context = StorageContext.from_defaults(vector_store=vector_store)
-index = VectorStoreIndex.from_vector_store(vector_store=vector_store, embed_model=embed_model)
+with timer("Pinecone Initialization"):
+    pc = Pinecone(api_key=os.environ["PINECONE_API_KEY"])
+    pc_index = pc.Index("stage-itsbot")
+    vector_store = PineconeVectorStore(pinecone_index=pc_index, namespace="4802b88d-d493-4648-a04d-8dc5585cf271")
+    storage_context = StorageContext.from_defaults(vector_store=vector_store)
+    embed_model = OpenAIEmbedding(api_key=os.environ["OPENAI_API_KEY"],model="text-embedding-3-small")
+    index = VectorStoreIndex.from_vector_store(vector_store=vector_store, embed_model=embed_model)
 
 from pymongo import MongoClient
-mongo_client = MongoClient(os.environ["MONGO_URI"])  # e.g., "mongodb://localhost:27017"
-db = mongo_client["itsbot-db"]  # replace with your DB name
-parents_collection = db["parentdocs"]
+with timer("Mongo Intialization"):
+    mongo_client = MongoClient(os.environ["MONGO_URI"])  # e.g., "mongodb://localhost:27017"
+    db = mongo_client["itsbot-db"]  # replace with your DB name
+    parents_collection = db["parentdocs"]
 
 @llm.function_tool
 async def ask_knowledge_base(question: str) -> str:
@@ -64,13 +75,15 @@ async def ask_knowledge_base(question: str) -> str:
 # ---- Retriever Function ----
     """Query the Pinecone index (knowledge base) for relevant information."""
     from llama_index.llms.openai import OpenAI
-    retriever  = index.as_query_engine(similarity_top_k=2, 
-                                         use_async=True, 
-                                         llm=OpenAI(
-                                             api_key=os.environ["OPENAI_API_KEY"],
-                                             model="gpt-4o-mini")
-                                        )
-    results = retriever.retrieve(question)
+    with timer("Retriever Initialization"):
+        retriever  = index.as_query_engine(similarity_top_k=2, 
+                                            use_async=True, 
+                                            llm=OpenAI(
+                                                api_key=os.environ["OPENAI_API_KEY"],
+                                                model="gpt-4o-mini")
+                                            )
+    with timer("Fetching Retriever"):
+        results = retriever.retrieve(question)
 
     # Filter nodes by similarity >= 0.7
     filtered_nodes = [node for node in results if node.score >= 0.6]
@@ -83,7 +96,8 @@ async def ask_knowledge_base(question: str) -> str:
     for node_with_score in filtered_nodes:
         doc_id = node_with_score.node.metadata.get("doc_id")
         if doc_id:
-            doc = parents_collection.find_one({"parentDocId": doc_id})
+            with timer("Fetching Mongo"):
+                doc = parents_collection.find_one({"parentDocId": doc_id})
             if doc:
                 fetched_docs.append(doc.get("data", ""))  # assuming the string is in 'content'
 
