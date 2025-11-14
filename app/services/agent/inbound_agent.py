@@ -137,6 +137,17 @@ async def ask_knowledge_base(question: str):
         print(f"Mongo Docs: \n{mongo_docs}")
         return mongo_docs
 
+# ---------------------- PRE-WARM CONNECTIONS ----------------------
+async def prewarm():
+    """Pre-initialize HTTPS sessions and caches to avoid cold-start delay."""
+    print("Prewarming connections...")
+    try:
+        _ = await retriever.aretrieve("ping")  # Warm Pinecone/OpenAI
+    except Exception as e:
+        print("Prewarm failed (harmless):", e)
+    _ = get_cached_embedding("ping")  # Warm cache
+    print("Prewarm complete.")
+
 ###### Inbound RAG Agent ######
 class InboundAgent(Agent):
     def __init__(self):
@@ -155,6 +166,7 @@ class InboundAgent(Agent):
 
 
 async def entrypoint(ctx: JobContext):
+    await prewarm()
     await ctx.connect(auto_subscribe=AutoSubscribe.AUDIO_ONLY)
 
     agent = InboundAgent()
@@ -188,5 +200,6 @@ if __name__ == "__main__":
     # Run the agent with the name that matches your dispatch rule
     cli.run_app(WorkerOptions(
         entrypoint_fnc=entrypoint,
-        agent_name="inbound-agent"  # This must match your dispatch rule
+        agent_name="inbound-agent",
+        initialize_process_timeout=60  # This must match your dispatch rule
     ))
