@@ -101,13 +101,15 @@ async def ask_knowledge_base(question: str):
     """Retrieve relevant documents from Pinecone + fetch full docs from Mongo."""
     with Timer("Full Query"):
 
-        # (1) Get (possibly cached) embedding
-        with Timer("Embedding Creation"):
-            query_vec = get_cached_embedding(question)
+        # # (1) Get (possibly cached) embedding
+        # with Timer("Embedding Creation"):
+        #     query_vec = get_cached_embedding(question)
 
         # (2) Perform Pinecone query (async)
         with Timer("Retriever Query"):
             results = await retriever.aretrieve(question)
+
+        results = [node for node in results if node.score >= 0.6]
 
         # (3) Extract doc IDs
         ids = [
