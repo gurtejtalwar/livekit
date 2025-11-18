@@ -102,7 +102,7 @@ with Timer("Pinecone + Index Initialization"):
         vector_store=vector_store,
         embed_model=embed_model
     )
-    retriever = index.as_retriever(similarity_top_k=1, use_async=True)
+    retriever = index.as_retriever(similarity_top_k=5, use_async=True)
 
 with Timer("Mongo Initialization"):
     mongo_client = AsyncIOMotorClient(os.environ["MONGO_URI"])
@@ -122,7 +122,7 @@ async def ask_knowledge_base(question: str):
     with Timer("Full Query"):
 
         # (2) Perform Pinecone query (async)
-        with Timer("Retriever Query"):
+        with Timer("Retriever Fetch"):
             results = await retriever.aretrieve(question)
 
         # results = [node for node in results if node.score >= 0.6]
@@ -228,7 +228,13 @@ async def entrypoint(ctx: JobContext):
     session = AgentSession(
         stt=deepgram.STT(language="en"),
         llm=openai.LLM(model="gpt-4o-mini", tool_choice="auto"),
-        tts=cartesia.TTS(model="sonic-turbo", voice="228fca29-3a0a-435c-8728-5cb483251068"),
+        tts=cartesia.TTS
+        (
+            model="sonic-turbo",
+            voice="228fca29-3a0a-435c-8728-5cb483251068",
+            emotion="Excited",
+            speed="slow"
+        ),
         # vad=silero.VAD.load(),
         turn_detection=EnglishModel(),
         preemptive_generation=True,
