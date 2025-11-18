@@ -27,14 +27,33 @@ logger = logging.getLogger("inbound-agent")
 for noisy_logger in ["pymongo", "pymongo.topology", "pymongo.connection"]:
     logging.getLogger(noisy_logger).setLevel(logging.WARNING)
 
-# @contextmanager
-# def timer(name="Operation"):
-#     start = time.perf_counter()
-#     yield
-#     end = time.perf_counter()
-#     print(f"TIMER: {name} took {end - start:.4f} seconds")
+from collections import OrderedDict
+from typing import Optional
 
-# Function tools to enhance your agent's capabilities
+class LRUCache:
+    """Simple thread-safe LRU for async apps (no awaits needed)."""
+    def __init__(self, max_size: int = 512):
+        self.max_size = max_size
+        self.cache = OrderedDict()
+
+    def get(self, key: str) -> Optional[str]:
+        if key not in self.cache:
+            return None
+        # mark as recently used
+        self.cache.move_to_end(key)
+        return self.cache[key]
+
+    def set(self, key: str, value: str):
+        self.cache[key] = value
+        self.cache.move_to_end(key)
+
+        # evict least recently used
+        if len(self.cache) > self.max_size:
+            self.cache.popitem(last=False)
+
+# create global cache instance
+mongo_lru_cache = LRUCache(max_size=512)
+
 @function_tool
 async def get_current_time() -> str:
     """Get the current time."""
@@ -65,7 +84,7 @@ class Timer:
 
     def __exit__(self, *exc):
         dur = time.perf_counter() - self.start
-        print(f"TIMER: {self.name} took {dur:.4f} seconds")
+        print(f"\nTIMER: {self.name} took {dur:.4f} seconds")
 
 # ---------------------- GLOBAL SETUP ----------------------
 with Timer("Pinecone + Index Initialization"):
@@ -118,23 +137,60 @@ async def ask_knowledge_base(question: str):
         if not ids:
             return {"retriever_results": results, "mongo_docs": []}
 
+        # ------------------------------
+        # LRU cache check
+        # ------------------------------
+        cached_values = []
+        ids_to_fetch = []
+
+        for doc_id in ids:
+            cached = mongo_lru_cache.get(doc_id)
+            if cached is not None:
+                cached_values.append(cached)
+            else:
+                ids_to_fetch.append(doc_id)
+
+        # If everything is cached, no Mongo needed
+        if not ids_to_fetch:
+            full_text = "\n".join(cached_values)
+            return full_text
+
         # (4) Fetch Mongo docs asynchronously
         async def fetch_mongo(ids):
             cursor = parents_collection.find(
                 {"parentDocId": {"$in": ids}},
-                {"_id": 0, "data": 1}
+                {"_id": 0, "parentDocId": 1, "data": 1}
             )
             docs = await cursor.to_list(length=None)
 
-            data_values = [doc["data"] for doc in docs if "data" in doc]
+            data_values = []
+            for doc in docs:
+                doc_id = doc.get("parentDocId")
+                text = doc.get("data", "")
 
-            return "\n".join(data_values)
+                # set cache
+                if doc_id:
+                    mongo_lru_cache.set(doc_id, text)
+
+                data_values.append(text)
+
+            return data_values
 
         with Timer("Mongo Fetch"):
-            mongo_docs = await fetch_mongo(ids)
+            await fetch_mongo(ids_to_fetch)
+
+        # Combine cached + fetched (preserve order of original ids)
+        final_values = []
+        cache_map = {id_: mongo_lru_cache.get(id_) for id_ in ids}
+
+        for doc_id in ids:
+            final_values.append(cache_map.get(doc_id, ""))
+
+        mongo_docs = "\n".join(final_values)
 
         print(f"Mongo Docs: \n{mongo_docs}")
         return mongo_docs
+
 
 # ---------------------- PRE-WARM CONNECTIONS ----------------------
 async def prewarm():
