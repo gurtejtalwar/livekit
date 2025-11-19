@@ -23,6 +23,8 @@ from livekit.agents.voice.agent import ModelSettings
 from livekit.plugins.turn_detector.multilingual import MultilingualModel
 from livekit.plugins.turn_detector.english import EnglishModel
 
+from app.services.agent.cache import semantic_context_cache
+
 logger = logging.getLogger("inbound-agent")
 for noisy_logger in ["pymongo", "pymongo.topology", "pymongo.connection"]:
     logging.getLogger(noisy_logger).setLevel(logging.WARNING)
@@ -71,7 +73,6 @@ from pymongo import MongoClient
 from motor.motor_asyncio import AsyncIOMotorClient
 from functools import lru_cache
 
-from app.services.agent.cache import semantic_context_cache
 load_dotenv(override=True)
 
 # ---------------------- TIMER UTILITY ----------------------
@@ -104,7 +105,7 @@ with Timer("Pinecone + Index Initialization"):
         vector_store=vector_store,
         embed_model=embed_model
     )
-    retriever = index.as_retriever(similarity_top_k=5, use_async=True)
+    retriever = index.as_retriever(similarity_top_k=1, use_async=True)
 
 with Timer("Mongo Initialization"):
     mongo_client = AsyncIOMotorClient(os.environ["MONGO_URI"])
@@ -123,82 +124,51 @@ async def ask_knowledge_base(question: str):
     """Retrieve relevant documents from Pinecone + fetch full docs from Mongo."""
     with Timer("Full Query"):
 
-        # (2) Perform Pinecone query (async)
-        with Timer("Retriever Fetch"):
-            results = await retriever.aretrieve(question)
+        # Run cache check and retriever fetch IN PARALLEL
+        async def check_cache():
+            with Timer("Cache Fetch"):
+                return semantic_context_cache.get(question)
+        
+        async def fetch_from_retriever():
+            with Timer("Retriever Fetch"):
+                return await retriever.aretrieve(question)
+        
+        # Start both operations simultaneously
+        cache_task = asyncio.create_task(check_cache())
+        retriever_task = asyncio.create_task(fetch_from_retriever())
+        
+        # Wait for cache check first (it's usually faster)
+        cache_result = await cache_task
+        
+        
+        if cache_result:
+            matched_question, cached_context, similarity = cache_result
+            print(f"✓ Cache Hit! Similarity: {similarity:.3f}")
+            print(f"  Matched: '{matched_question[:60]}...'")
+            
+            # Cancel the retriever task since we don't need it
+            retriever_task.cancel()
+            # try:
+            #     await retriever_task
+            # except asyncio.CancelledError:
+            #     pass  # Expected when we cancel
+            
+            return cached_context + "\n\n(Cached)"
+        
+        print("✗ Cache Miss - Using retriever results...")
+        
+        # Cache miss: wait for retriever (which is already running!)
+        results = await retriever_task
 
-        # results = [node for node in results if node.score >= 0.6]
+        # Step 4: Build context
+        context = "\nContext:\n" + "\n".join(node.text for node in results)
 
-        context = []
-        for node in results:
-            context.append(node.text)
+        # Step 5: Store in semantic cache
+        asyncio.create_task(
+                semantic_context_cache.set_async(question, context)
+            )
 
-        return "\nContext:\n".join(context)
-        # (3) Extract doc IDs
-        ids = [
-            r.node.metadata.get("doc_id")
-            for r in results
-            if r.node.metadata.get("doc_id")
-        ]
-
-        if not ids:
-            return {"retriever_results": results, "mongo_docs": []}
-
-        # # ------------------------------
-        # # LRU cache check
-        # # ------------------------------
-        # cached_values = []
-        # ids_to_fetch = []
-
-        # for doc_id in ids:
-        #     cached = mongo_lru_cache.get(doc_id)
-        #     if cached is not None:
-        #         cached_values.append(cached)
-        #     else:
-        #         ids_to_fetch.append(doc_id)
-
-        # # If everything is cached, no Mongo needed
-        # if not ids_to_fetch:
-        #     full_text = "\n".join(cached_values)
-        #     return full_text
-
-        # # (4) Fetch Mongo docs asynchronously
-        # async def fetch_mongo(ids):
-        #     cursor = parents_collection.find(
-        #         {"parentDocId": {"$in": ids}},
-        #         {"_id": 0, "parentDocId": 1, "data": 1}
-        #     )
-        #     docs = await cursor.to_list(length=None)
-
-        #     data_values = []
-        #     for doc in docs:
-        #         doc_id = doc.get("parentDocId")
-        #         text = doc.get("data", "")
-
-        #         # set cache
-        #         if doc_id:
-        #             mongo_lru_cache.set(doc_id, text)
-
-        #         data_values.append(text)
-
-        #     return data_values
-
-        # with Timer("Mongo Fetch"):
-        #     await fetch_mongo(ids_to_fetch)
-
-        # Combine cached + fetched (preserve order of original ids)
-        final_values = []
-        cache_map = {id_: mongo_lru_cache.get(id_) for id_ in ids}
-
-        for doc_id in ids:
-            final_values.append(cache_map.get(doc_id, ""))
-
-        mongo_docs = "\n".join(final_values)
-
-        print(f"Mongo Docs: \n{mongo_docs}")
-        return mongo_docs
-
-
+        return context
 # ---------------------- PRE-WARM CONNECTIONS ----------------------
 async def prewarm():
     """Pre-initialize HTTPS sessions and caches to avoid cold-start delay."""
@@ -220,7 +190,9 @@ class InboundAgent(Agent):
                 "Do not rely on your internal memory. "
                 "After receiving the tool's output, use it to construct a conversational, human-like answer. "
                 "If the tool returns no relevant data, politely say you don't have enough information. "
-                "Keep responses concise and optimized for spoken delivery. PLEASE MAKE SURE THAT THE RESPONSES ARE SHORT SO THAT IT MIMICKS A PHONE CONVERSATION BETWEEN HUMANS"
+                "Keep responses concise and optimized for spoken delivery. PLEASE MAKE SURE THAT THE RESPONSES ARE SHORT SO THAT IT MIMICKS A PHONE CONVERSATION BETWEEN HUMANS. "
+                "Do not respond with asterick, bullet points,etc  please respond how you would in a normal conversation with a human. "
+                "PLEASE keep your tone friendly and enthusiastic. Always Respond politely to the customer. You are allowed to do small talks with the customer BUT DO NOT STRAY AWAY FROM THE BUSINESS AND OBJECTIVE OF THE CONVERSATION"
                 "Format numbers naturally (e.g., 'five hundred and twelve gigabytes')."
             ),
             tools=[get_current_time, ask_knowledge_base],
@@ -237,14 +209,14 @@ async def inbound_entrypoint(ctx: JobContext):
         llm=openai.LLM(model="gpt-4o-mini", tool_choice="auto"),
         tts=cartesia.TTS
         (
-            model="sonic-turbo",
+            # model="sonic-turbo",
             voice="228fca29-3a0a-435c-8728-5cb483251068",
-            emotion="Excited",
+            emotion="Happy",
             speed="slow"
         ),
         vad=silero.VAD.load(),
         turn_detection=EnglishModel(),
-        # preemptive_generation=True,
+        preemptive_generation=True,
     )
 
     await session.start(
