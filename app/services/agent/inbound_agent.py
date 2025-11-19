@@ -3,6 +3,8 @@ import time
 from contextlib import contextmanager
 import os
 import logging
+from collections.abc import AsyncIterable
+
 from livekit.agents import (
     Agent,
     AgentSession,
@@ -14,7 +16,7 @@ from livekit.agents import (
     RoomInputOptions,
     RoomOutputOptions,
 )
-from livekit.agents.llm import function_tool
+from livekit.agents.llm import function_tool, ChatContext, ChatMessage
 from livekit.plugins import deepgram, openai, cartesia, silero, noise_cancellation
 from llama_index.core.schema import MetadataMode
 from llama_index.embeddings.openai import OpenAIEmbedding
@@ -198,6 +200,50 @@ class InboundAgent(Agent):
             tools=[get_current_time, ask_knowledge_base],
         )
 
+        self._fast_llm = openai.LLM(model="gpt-4o-mini")
+        self._fast_llm_prompt = llm.ChatMessage(
+            role="system",
+            content=[
+                "Generate a short instant response to the user's message with 5 to 10 words.",
+                "Do not answer the questions directly. Examples:, let me think about that, "
+                "wait a moment, that's a good question, etc.",
+            ],
+        )
+
+
+    async def on_user_turn_completed(self, turn_ctx: ChatContext, new_message: ChatMessage):
+        # Create a short "silence filler" response to quickly acknowledge the user's input
+        fast_llm_ctx = turn_ctx.copy(
+            exclude_instructions=True, exclude_function_call=True
+        ).truncate(max_items=3)
+        fast_llm_ctx.items.insert(0, self._fast_llm_prompt)
+        fast_llm_ctx.items.append(new_message)
+
+        # # Intentionally not awaiting SpeechHandle to allow the main response generation to
+        # # run concurrently
+        # self.session.say(
+        #     self._fast_llm.chat(chat_ctx=fast_llm_ctx).to_str_iterable(),
+        #     add_to_chat_ctx=False,
+        # )
+
+        # Alternatively, if you want the reply to be aware of this "silence filler" response,
+        # you can await the fast llm done and add the message to the turn context. But note
+        # that not all llm supports completing from an existing assistant message.
+
+        fast_llm_fut = asyncio.Future[str]()
+
+        async def _fast_llm_reply() -> AsyncIterable[str]:
+            filler_response: str = ""
+            async for chunk in self._fast_llm.chat(chat_ctx=fast_llm_ctx).to_str_iterable():
+                filler_response += chunk
+                yield chunk
+            fast_llm_fut.set_result(filler_response)
+
+        self.session.say(_fast_llm_reply(), add_to_chat_ctx=False)
+
+        filler_response = await fast_llm_fut
+        logger.info(f"Fast response: {filler_response}")
+        turn_ctx.add_message(role="assistant", content=filler_response, interrupted=False)
 
 async def inbound_entrypoint(ctx: JobContext):
     await prewarm()
