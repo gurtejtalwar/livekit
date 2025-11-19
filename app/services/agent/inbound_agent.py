@@ -71,6 +71,7 @@ from pymongo import MongoClient
 from motor.motor_asyncio import AsyncIOMotorClient
 from functools import lru_cache
 
+from app.services.agent.cache import semantic_context_cache
 load_dotenv(override=True)
 
 # ---------------------- TIMER UTILITY ----------------------
@@ -89,10 +90,11 @@ class Timer:
 # ---------------------- GLOBAL SETUP ----------------------
 with Timer("Pinecone + Index Initialization"):
     pc = Pinecone(api_key=os.environ["PINECONE_API_KEY"])
-    pc_index = pc.Index("prod-itsbot")
+    pc_index = pc.Index("ai-tutor")
+    # pc_index = pc.Index("prod-itsbot")
     vector_store = PineconeVectorStore(
         pinecone_index=pc_index,
-        namespace="f280790d-1517-456a-8954-2c296b38f8e1"
+        # namespace="f280790d-1517-456a-8954-2c296b38f8e1"
     )
     embed_model = OpenAIEmbedding(
         api_key=os.environ["OPENAI_API_KEY"],
@@ -127,6 +129,11 @@ async def ask_knowledge_base(question: str):
 
         # results = [node for node in results if node.score >= 0.6]
 
+        context = []
+        for node in results:
+            context.append(node.text)
+
+        return "\nContext:\n".join(context)
         # (3) Extract doc IDs
         ids = [
             r.node.metadata.get("doc_id")
@@ -137,47 +144,47 @@ async def ask_knowledge_base(question: str):
         if not ids:
             return {"retriever_results": results, "mongo_docs": []}
 
-        # ------------------------------
-        # LRU cache check
-        # ------------------------------
-        cached_values = []
-        ids_to_fetch = []
+        # # ------------------------------
+        # # LRU cache check
+        # # ------------------------------
+        # cached_values = []
+        # ids_to_fetch = []
 
-        for doc_id in ids:
-            cached = mongo_lru_cache.get(doc_id)
-            if cached is not None:
-                cached_values.append(cached)
-            else:
-                ids_to_fetch.append(doc_id)
+        # for doc_id in ids:
+        #     cached = mongo_lru_cache.get(doc_id)
+        #     if cached is not None:
+        #         cached_values.append(cached)
+        #     else:
+        #         ids_to_fetch.append(doc_id)
 
-        # If everything is cached, no Mongo needed
-        if not ids_to_fetch:
-            full_text = "\n".join(cached_values)
-            return full_text
+        # # If everything is cached, no Mongo needed
+        # if not ids_to_fetch:
+        #     full_text = "\n".join(cached_values)
+        #     return full_text
 
-        # (4) Fetch Mongo docs asynchronously
-        async def fetch_mongo(ids):
-            cursor = parents_collection.find(
-                {"parentDocId": {"$in": ids}},
-                {"_id": 0, "parentDocId": 1, "data": 1}
-            )
-            docs = await cursor.to_list(length=None)
+        # # (4) Fetch Mongo docs asynchronously
+        # async def fetch_mongo(ids):
+        #     cursor = parents_collection.find(
+        #         {"parentDocId": {"$in": ids}},
+        #         {"_id": 0, "parentDocId": 1, "data": 1}
+        #     )
+        #     docs = await cursor.to_list(length=None)
 
-            data_values = []
-            for doc in docs:
-                doc_id = doc.get("parentDocId")
-                text = doc.get("data", "")
+        #     data_values = []
+        #     for doc in docs:
+        #         doc_id = doc.get("parentDocId")
+        #         text = doc.get("data", "")
 
-                # set cache
-                if doc_id:
-                    mongo_lru_cache.set(doc_id, text)
+        #         # set cache
+        #         if doc_id:
+        #             mongo_lru_cache.set(doc_id, text)
 
-                data_values.append(text)
+        #         data_values.append(text)
 
-            return data_values
+        #     return data_values
 
-        with Timer("Mongo Fetch"):
-            await fetch_mongo(ids_to_fetch)
+        # with Timer("Mongo Fetch"):
+        #     await fetch_mongo(ids_to_fetch)
 
         # Combine cached + fetched (preserve order of original ids)
         final_values = []
@@ -208,8 +215,8 @@ class InboundAgent(Agent):
     def __init__(self):
         super().__init__(
             instructions=(
-                "You are a ItsCNC customer service AI assistant. "
-                "For ANY ItsCNC-related or factual question, you MUST use the 'ask_knowledge_base' tool FIRST. "
+                "You are a Eminence Technology customer service AI assistant. "
+                "For ANY Eminence Technology-related or factual question, you MUST use the 'ask_knowledge_base' tool FIRST. "
                 "Do not rely on your internal memory. "
                 "After receiving the tool's output, use it to construct a conversational, human-like answer. "
                 "If the tool returns no relevant data, politely say you don't have enough information. "
@@ -220,7 +227,7 @@ class InboundAgent(Agent):
         )
 
 
-async def entrypoint(ctx: JobContext):
+async def inbound_entrypoint(ctx: JobContext):
     await prewarm()
     await ctx.connect(auto_subscribe=AutoSubscribe.AUDIO_ONLY)
 
@@ -235,9 +242,9 @@ async def entrypoint(ctx: JobContext):
             emotion="Excited",
             speed="slow"
         ),
-        # vad=silero.VAD.load(),
+        vad=silero.VAD.load(),
         turn_detection=EnglishModel(),
-        preemptive_generation=True,
+        # preemptive_generation=True,
     )
 
     await session.start(
@@ -249,18 +256,5 @@ async def entrypoint(ctx: JobContext):
         ),
     )
     time.sleep(0.2)
-    await session.say("Thanks for calling ItsCNC customer support. My name is Lala, let me know how I can assist you")
+    await session.say("Thanks for calling Eminence Technology customer support. My name is Lala, let me know how I can assist you")
 
-if __name__ == "__main__":
-    # Configure logging for better debugging
-    logging.basicConfig(
-        level=logging.INFO,
-        format='%(asctime)s - %(name)s - %(levelname)s - %(message)s'
-    )
-    
-    # Run the agent with the name that matches your dispatch rule
-    cli.run_app(WorkerOptions(
-        entrypoint_fnc=entrypoint,
-        agent_name="inbound-agent",
-        initialize_process_timeout=60  # This must match your dispatch rule
-    ))
