@@ -131,7 +131,7 @@ class SemanticLRUCache:
         
         if len(self.cache) > self.capacity:
             self.cache.popitem(last=False)
-            
+
 embed_model = OpenAIEmbedding(
         api_key=os.environ["OPENAI_API_KEY"],
         model="text-embedding-3-small"
@@ -140,5 +140,5 @@ embed_model = OpenAIEmbedding(
 semantic_context_cache = SemanticLRUCache(
     embed_model=embed_model,  # Your OpenAI embedding model
     capacity=200,
-    similarity_threshold=0.95
+    similarity_threshold=0.75
 )

@@ -15,7 +15,7 @@ from livekit.agents import (
     RoomOutputOptions,
 )
 from livekit.agents.llm import function_tool
-from livekit.plugins import deepgram, openai, cartesia, silero, noise_cancellation
+from livekit.plugins import deepgram, openai, cartesia, silero, noise_cancellation, elevenlabs, assemblyai
 from llama_index.core.schema import MetadataMode
 from llama_index.embeddings.openai import OpenAIEmbedding
 
@@ -118,24 +118,23 @@ def get_cached_embedding(text: str):
     """Cache embeddings for repeated/similar queries."""
     return embed_model.get_text_embedding(text)
 
+# Run cache check and retriever fetch IN PARALLEL
+async def check_cache(question):
+    with Timer("Cache Fetch"):
+        return semantic_context_cache.get(question)
+
+async def fetch_from_retriever(question):
+    with Timer("Retriever Fetch"):
+        return await retriever.aretrieve(question)
 # ---------------------- MAIN PIPELINE ----------------------
 @llm.function_tool
 async def ask_knowledge_base(question: str):
     """Retrieve relevant documents from Pinecone + fetch full docs from Mongo."""
     with Timer("Full Query"):
 
-        # Run cache check and retriever fetch IN PARALLEL
-        async def check_cache():
-            with Timer("Cache Fetch"):
-                return semantic_context_cache.get(question)
-        
-        async def fetch_from_retriever():
-            with Timer("Retriever Fetch"):
-                return await retriever.aretrieve(question)
-        
         # Start both operations simultaneously
-        cache_task = asyncio.create_task(check_cache())
-        retriever_task = asyncio.create_task(fetch_from_retriever())
+        cache_task = asyncio.ensure_future(check_cache(question))
+        retriever_task = asyncio.create_task(fetch_from_retriever(question))
         
         # Wait for cache check first (it's usually faster)
         cache_result = await cache_task
@@ -193,31 +192,52 @@ class InboundAgent(Agent):
                 "Keep responses concise and optimized for spoken delivery. PLEASE MAKE SURE THAT THE RESPONSES ARE SHORT SO THAT IT MIMICKS A PHONE CONVERSATION BETWEEN HUMANS. "
                 "Do not respond with asterick, bullet points,etc  please respond how you would in a normal conversation with a human. "
                 "PLEASE keep your tone friendly and enthusiastic. Always Respond politely to the customer. You are allowed to do small talks with the customer BUT DO NOT STRAY AWAY FROM THE BUSINESS AND OBJECTIVE OF THE CONVERSATION"
-                "Format numbers naturally (e.g., 'five hundred and twelve gigabytes')."
+                "Format numbers naturally (e.g., 'five hundred and twelve gigabytes')." \
+                # "Please return the text with formatted emotion type before sentence to indicate the TTS model on which emotion to synthesie the speed with, for eg, [enthusiastically] Hello, how are you."
             ),
+            stt=deepgram.STT(),
+            # stt=assemblyai.STT(model="universal-streaming-multilingual"),
+            llm=openai.LLM(model="gpt-4o-mini", tool_choice="auto"),
+            # tts=elevenlabs.TTS(),#model="eleven_v3",voice_id="EkK5I93UQWFDigLMpZcX"),
+            tts=cartesia.TTS
+            (
+                model="sonic-turbo",
+                voice="228fca29-3a0a-435c-8728-5cb483251068",
+                emotion="Happy",
+                speed="slow",
+                volume=100
+            ),
+            vad=silero.VAD.load(),
+            turn_detection=EnglishModel(),
+            # preemptive_generation=True,
             tools=[get_current_time, ask_knowledge_base],
         )
+    async def llm_node(
+        self, chat_ctx, tools, model_settings=None
+    ):
+        with Timer("LLM Node:"):
+        # async def process_stream():
+            async with self.llm.chat(chat_ctx=chat_ctx, tools=tools, tool_choice=None) as stream:
+                async for chunk in stream:
+                    if chunk is None:
+                        continue
+                    print(f"Chunk:\n{chunk}")
+                    content = getattr(chunk.delta, 'content', None) if hasattr(chunk, 'delta') else str(chunk)
+                    if content is None:
+                        yield chunk
+                        continue
 
+
+                    yield chunk
+    async def tts_node(self, text, model_settings):
+        return super().tts_node(text, model_settings)
 
 async def inbound_entrypoint(ctx: JobContext):
     await prewarm()
     await ctx.connect(auto_subscribe=AutoSubscribe.AUDIO_ONLY)
 
     agent = InboundAgent()
-    session = AgentSession(
-        stt=deepgram.STT(language="en"),
-        llm=openai.LLM(model="gpt-4o-mini", tool_choice="auto"),
-        tts=cartesia.TTS
-        (
-            # model="sonic-turbo",
-            voice="228fca29-3a0a-435c-8728-5cb483251068",
-            emotion="Happy",
-            speed="slow"
-        ),
-        vad=silero.VAD.load(),
-        turn_detection=EnglishModel(),
-        preemptive_generation=True,
-    )
+    session = AgentSession()
 
     await session.start(
         room=ctx.room,
