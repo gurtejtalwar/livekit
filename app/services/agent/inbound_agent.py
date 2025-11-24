@@ -129,45 +129,46 @@ async def fetch_from_retriever(question):
 # ---------------------- MAIN PIPELINE ----------------------
 @llm.function_tool
 async def ask_knowledge_base(question: str):
-    """Retrieve relevant documents from Pinecone + fetch full docs from Mongo."""
-    with Timer("Full Query"):
-
-        # Start both operations simultaneously
-        cache_task = asyncio.ensure_future(check_cache(question))
-        retriever_task = asyncio.create_task(fetch_from_retriever(question))
-        
-        # Wait for cache check first (it's usually faster)
+    """Ultra-fast retrieval with streaming context"""
+    
+    # Run cache and retriever in parallel
+    cache_task = asyncio.create_task(check_cache(question))
+    retriever_task = asyncio.create_task(fetch_from_retriever(question))
+    
+    # Wait for whichever completes first
+    done, pending = await asyncio.wait(
+        {cache_task, retriever_task},
+        return_when=asyncio.FIRST_COMPLETED,
+        timeout=0.5  # Max 500ms wait
+    )
+    
+    # Check cache first
+    if cache_task in done:
         cache_result = await cache_task
-        
-        
         if cache_result:
             matched_question, cached_context, similarity = cache_result
             print(f"✓ Cache Hit! Similarity: {similarity:.3f}")
-            print(f"  Matched: '{matched_question[:60]}...'")
             
-            # Cancel the retriever task since we don't need it
-            retriever_task.cancel()
-            # try:
-            #     await retriever_task
-            # except asyncio.CancelledError:
-            #     pass  # Expected when we cancel
+            # Cancel pending retriever
+            for task in pending:
+                task.cancel()
             
-            return cached_context + "\n\n(Cached)"
-        
-        print("✗ Cache Miss - Using retriever results...")
-        
-        # Cache miss: wait for retriever (which is already running!)
+            return cached_context
+    
+    # Use retriever results
+    if retriever_task in done:
         results = await retriever_task
-
-        # Step 4: Build context
-        context = "\nContext:\n" + "\n".join(node.text for node in results)
-
-        # Step 5: Store in semantic cache
-        asyncio.create_task(
-                semantic_context_cache.set_async(question, context)
-            )
-
-        return context
+    else:
+        results = await retriever_task  # Wait if not done yet
+    
+    # Build context with LIMIT
+    context_parts = [node.text for node in results[:3]]  # Limit to top 3 for speed
+    context = "\n".join(context_parts)
+    
+    # Async cache update (fire and forget)
+    asyncio.create_task(semantic_context_cache.set_async(question, context))
+    
+    return context
 # ---------------------- PRE-WARM CONNECTIONS ----------------------
 async def prewarm():
     """Pre-initialize HTTPS sessions and caches to avoid cold-start delay."""
@@ -207,35 +208,34 @@ class InboundAgent(Agent):
                 speed="slow",
                 volume=100
             ),
-            vad=silero.VAD.load(),
+            vad=silero.VAD.load(min_speech_duration=0.2,
+                                min_silence_duration=0.3),
             turn_detection=EnglishModel(),
             # preemptive_generation=True,
             tools=[get_current_time, ask_knowledge_base],
+            min_endpointing_delay=0.3,
+            max_endpointing_delay=1.5,
+            allow_interruptions=True,
+            use_tts_aligned_transcript=False
         )
     async def llm_node(
         self, chat_ctx, tools, model_settings=None
     ):
+        """Optimized LLM node with minimal overhead"""
         with Timer("LLM Node:"):
-        # async def process_stream():
-            async with self.llm.chat(chat_ctx=chat_ctx, tools=tools, tool_choice=None) as stream:
-                async for chunk in stream:
-                    if chunk is None:
-                        continue
-                    print(f"Chunk:\n{chunk}")
-                    content = getattr(chunk.delta, 'content', None) if hasattr(chunk, 'delta') else str(chunk)
-                    if content is None:
-                        yield chunk
-                        continue
+            async for chunk in super().llm_node(chat_ctx, tools, model_settings):
+                yield chunk 
 
 
-                    yield chunk
     async def tts_node(self, text, model_settings):
         return super().tts_node(text, model_settings)
 
 async def inbound_entrypoint(ctx: JobContext):
-    await prewarm()
+    # Prewarm in parallel with connection
+    prewarm_task = asyncio.create_task(prewarm())
     await ctx.connect(auto_subscribe=AutoSubscribe.AUDIO_ONLY)
-
+    await prewarm_task  # Ensure prewarm completes
+    
     agent = InboundAgent()
     session = AgentSession()
 
