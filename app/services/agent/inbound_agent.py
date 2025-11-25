@@ -1,18 +1,27 @@
 import asyncio
 import time
-from contextlib import contextmanager
 import os
 import logging
+from typing import Tuple
+from contextlib import contextmanager
+
 from livekit.agents import (
     Agent,
     AgentSession,
     AutoSubscribe,
     JobContext,
+    RunContext,
     WorkerOptions,
     cli,
     llm,
     RoomInputOptions,
     RoomOutputOptions,
+    metrics, 
+    MetricsCollectedEvent,
+    RunContext,
+    ChatContext, 
+    ChatMessage
+
 )
 from livekit.agents.llm import function_tool
 from livekit.plugins import deepgram, openai, cartesia, silero, noise_cancellation, elevenlabs, assemblyai
@@ -120,17 +129,35 @@ def get_cached_embedding(text: str):
 
 # Run cache check and retriever fetch IN PARALLEL
 async def check_cache(question):
-    with Timer("Cache Fetch"):
-        return semantic_context_cache.get(question)
+    # with Timer("Cache Fetch"):
+    return semantic_context_cache.get(question)
 
 async def fetch_from_retriever(question):
-    with Timer("Retriever Fetch"):
-        return await retriever.aretrieve(question)
+    # with Timer("Retriever Fetch"):
+    return await retriever.aretrieve(question)
 # ---------------------- MAIN PIPELINE ----------------------
 @llm.function_tool
-async def ask_knowledge_base(question: str):
+async def ask_knowledge_base(context: RunContext, question: str):
     """Ultra-fast retrieval with streaming context"""
+    # Send a verbal status update to the user after a short delay
+    async def _speak_status_update(delay: float = 0.5):
+        # await asyncio.sleep(delay)
+        await context.session.generate_reply(instructions=f"""
+            You are searching the knowledge base for \"{question}\" but it is taking a little while.
+            Update the user on your progress, but be very brief.
+        """)
     
+    status_update_task = asyncio.create_task(_speak_status_update(0.5))
+
+    # # Check if we have preemptive result (semantic match)
+    # if preemptive_cache:
+    #     preemptive_result = await preemptive_cache.get_result(question, timeout=0.5)
+    #     if preemptive_result:
+    #         print(f"⚡ Preemptive result found")
+    #         return preemptive_result
+        
+    # print(f"⚡ No preemptive result, fetching now: '{question[:50]}...'")
+
     # Run cache and retriever in parallel
     cache_task = asyncio.create_task(check_cache(question))
     retriever_task = asyncio.create_task(fetch_from_retriever(question))
@@ -141,7 +168,7 @@ async def ask_knowledge_base(question: str):
         return_when=asyncio.FIRST_COMPLETED,
         timeout=0.5  # Max 500ms wait
     )
-    
+    print(f"Done: {done}\nPending: {pending}")
     # Check cache first
     if cache_task in done:
         cache_result = await cache_task
@@ -152,7 +179,7 @@ async def ask_knowledge_base(question: str):
             # Cancel pending retriever
             for task in pending:
                 task.cancel()
-            
+            status_update_task.cancel()
             return cached_context
     
     # Use retriever results
@@ -168,6 +195,9 @@ async def ask_knowledge_base(question: str):
     # Async cache update (fire and forget)
     asyncio.create_task(semantic_context_cache.set_async(question, context))
     
+    # Cancel status update if search completed before timeout
+    status_update_task.cancel()
+
     return context
 # ---------------------- PRE-WARM CONNECTIONS ----------------------
 async def prewarm():
@@ -196,25 +226,25 @@ class InboundAgent(Agent):
                 "Format numbers naturally (e.g., 'five hundred and twelve gigabytes')." \
                 # "Please return the text with formatted emotion type before sentence to indicate the TTS model on which emotion to synthesie the speed with, for eg, [enthusiastically] Hello, how are you."
             ),
-            stt=deepgram.STT(),
+            stt=assemblyai.STT(),
             # stt=assemblyai.STT(model="universal-streaming-multilingual"),
-            llm=openai.LLM(model="gpt-4o-mini", tool_choice="auto"),
+            llm=openai.LLM(tool_choice="auto", max_completion_tokens=50),
             # tts=elevenlabs.TTS(),#model="eleven_v3",voice_id="EkK5I93UQWFDigLMpZcX"),
             tts=cartesia.TTS
             (
-                model="sonic-turbo",
-                voice="228fca29-3a0a-435c-8728-5cb483251068",
+                model="sonic-3",
+                voice="6ccbfb76-1fc6-48f7-b71d-91ac6298247b",
                 emotion="Happy",
-                speed="slow",
-                volume=100
+                speed=1.0,
+                volume=2
             ),
-            vad=silero.VAD.load(min_speech_duration=0.2,
-                                min_silence_duration=0.3),
-            turn_detection=EnglishModel(),
+            # vad=silero.VAD.load(min_speech_duration=0.2,
+            #                     min_silence_duration=0.3),
+            # turn_detection=EnglishModel(),
             # preemptive_generation=True,
             tools=[get_current_time, ask_knowledge_base],
-            min_endpointing_delay=0.3,
-            max_endpointing_delay=1.5,
+            min_endpointing_delay=0.1,  # Minimum wait after silence
+            max_endpointing_delay=1,  # Maximum wait before forcing turn end
             allow_interruptions=True,
             use_tts_aligned_transcript=False
         )
@@ -222,9 +252,91 @@ class InboundAgent(Agent):
         self, chat_ctx, tools, model_settings=None
     ):
         """Optimized LLM node with minimal overhead"""
-        with Timer("LLM Node:"):
-            async for chunk in super().llm_node(chat_ctx, tools, model_settings):
-                yield chunk 
+        # with Timer("LLM Node:"):
+        async for chunk in super().llm_node(chat_ctx, tools, model_settings):
+            yield chunk 
+
+    # async def on_user_turn_completed(self, turn_ctx: ChatContext, new_message: ChatMessage):
+    #     """
+    #     Called when user finishes speaking - perfect time to start preemptive retrieval!
+    #     This happens BEFORE the LLM processes the message.
+    #     """
+    #     # Send a verbal status update to the user after a short delay
+    #     fast_llm_ctx = turn_ctx.copy(
+
+    #         exclude_instructions=True, exclude_function_call=True
+    #     ).truncate(max_items=3)
+    #     fast_llm_ctx.items.insert(0, self._fast_llm_prompt)
+    #     fast_llm_ctx.items.append(new_message)
+
+    #     filler_response_fut = asyncio.Future[str]()
+
+    #     async def _speak_status_update(delay: float = 0.5):
+    #         await asyncio.sleep(delay)
+    #         async for chunk in self.llm.chat(chat_ctx=fast_llm_ctx).to_str_iterable():
+    #             filler_response += chunk
+    #         await turn_ctx.session.generate_reply(instructions=f"""
+    #             You are searching the knowledge base for \"{new_message.text_content}\" but it is taking a little while.
+    #             Update the user on your progress, but be very brief.
+    #         """)
+    #         filler_response_fut.set_result(filler_response)
+
+    #     status_update_task = asyncio.create_task(_speak_status_update(0.2))
+
+    #     rag_content = await ask_knowledge_base(new_message.text_content)
+
+    #     status_update_task.cancel()
+        
+    #     turn_ctx.add_message(role="assistant", content=rag_content)
+    #     await self.update_chat_ctx(turn_ctx)
+
+        # print(f"\n{'='*60}")
+        # print(f"🎤 User turn completed: '{new_message.content[:100]}...'")
+        # print(f"{'='*60}\n")
+        
+        # user_question = new_message.text_content.strip()
+        
+        # # Decide if we should preemptively retrieve
+        # should_retrieve = self._should_preemptively_retrieve(user_question)
+        
+        # if should_retrieve and preemptive_cache:
+        #     print(f"⚡ Starting preemptive semantic retrieval...")
+        #     # Start retrieval in background (non-blocking)
+        #     asyncio.create_task(preemptive_cache.start_retrieval(user_question))
+        # else:
+        #     print(f"⏭ Skipping preemptive retrieval (doesn't look like a KB question)")
+        
+        # await super().on_user_turn_completed(turn_ctx, new_message)
+    
+    
+    # def _should_preemptively_retrieve(self, question: str) -> bool:
+    #     """
+    #     Heuristic to decide if we should preemptively retrieve.
+    #     Returns True if question likely needs knowledge base.
+    #     """
+    #     question_lower = question.lower()
+        
+    #     # Skip if too short or greeting
+    #     if len(question.split()) < 3:
+    #         return False
+        
+    #     # Skip common greetings/small talk
+    #     greeting_patterns = [
+    #         "hello", "hi ", "hey", "good morning", "good afternoon",
+    #         "how are you", "thanks", "thank you", "bye", "goodbye"
+    #     ]
+    #     if any(pattern in question_lower for pattern in greeting_patterns):
+    #         return False
+        
+    #     # Retrieve if contains question words or product-related terms
+    #     retrieve_indicators = [
+    #         "what", "how", "when", "where", "why", "can you",
+    #         "tell me", "explain", "information", "about",
+    #         "product", "price", "feature", "service", "support",
+    #         "eminence", "technology", "help with"
+    #     ]
+        
+    #     return any(indicator in question_lower for indicator in retrieve_indicators)
 
 
     async def tts_node(self, text, model_settings):
@@ -247,6 +359,225 @@ async def inbound_entrypoint(ctx: JobContext):
             close_on_disconnect=True,
         ),
     )
-    time.sleep(0.2)
+    usage_collector = metrics.UsageCollector()
+
+    @session.on("metrics_collected")
+    def _on_metrics_collected(ev: MetricsCollectedEvent):
+        metrics.log_metrics(ev.metrics)
+
+    async def log_usage():
+        summary = usage_collector.get_summary()
+        logger.info(f"Usage: {summary}")
+
+    ctx.add_shutdown_callback(log_usage)
     await session.say("Thanks for calling Eminence Technology customer support. My name is Lala, let me know how I can assist you")
 
+import numpy as np
+# Global cache for preemptive retrieval results
+class PreemptiveSemanticCache:
+    """
+    Semantic cache for preemptive retrieval using cosine similarity.
+    Stores both completed results and running tasks.
+    """
+    def __init__(self, embed_model, capacity=50, similarity_threshold=0.92):
+        """
+        Args:
+            embed_model: OpenAI embedding model instance
+            capacity: Maximum number of cached items
+            similarity_threshold: Minimum cosine similarity (0-1) to consider a match
+        """
+        self.embed_model = embed_model
+        self.capacity = capacity
+        self.similarity_threshold = similarity_threshold
+        
+        # Cache structure: question_text -> (embedding, result, timestamp)
+        self._results_cache = OrderedDict()
+        
+        # Running tasks: question_text -> (embedding, task, timestamp)
+        self._tasks_cache = OrderedDict()
+        
+        self._lock = asyncio.Lock()
+    
+    def _cosine_similarity(self, emb1: np.ndarray, emb2: np.ndarray) -> float:
+        """Compute cosine similarity between two embeddings."""
+        emb1 = np.array(emb1, dtype=np.float32)
+        emb2 = np.array(emb2, dtype=np.float32)
+        
+        dot_product = np.dot(emb1, emb2)
+        norm1 = np.linalg.norm(emb1)
+        norm2 = np.linalg.norm(emb2)
+        
+        if norm1 == 0 or norm2 == 0:
+            return 0.0
+        
+        return float(dot_product / (norm1 * norm2))
+    
+    def _find_similar(self, query_embedding: np.ndarray, cache_dict: OrderedDict) -> Optional[Tuple[str, float]]:
+        """
+        Find most similar question in cache.
+        
+        Returns:
+            Tuple of (matched_question, similarity_score) if found, None otherwise
+        """
+        if not cache_dict:
+            return None
+        
+        query_emb = np.array(query_embedding, dtype=np.float32)
+        best_similarity = -1.0
+        best_key = None
+        
+        for cached_question, (cached_emb, *_) in cache_dict.items():
+            similarity = self._cosine_similarity(query_emb, cached_emb)
+            if similarity > best_similarity:
+                best_similarity = similarity
+                best_key = cached_question
+        
+        if best_similarity >= self.similarity_threshold:
+            return (best_key, best_similarity)
+        
+        return None
+    
+    async def start_retrieval(self, question: str) -> asyncio.Task:
+        """Start retrieval in background and return the task."""
+        # Get embedding for the question
+        query_embedding = self.embed_model.get_query_embedding(question)
+        
+        async with self._lock:
+            # Check if similar task already running
+            similar = self._find_similar(query_embedding, self._tasks_cache)
+            if similar:
+                matched_question, similarity = similar
+                print(f"✓ Similar task already running (sim={similarity:.3f}): '{matched_question[:50]}...'")
+                return self._tasks_cache[matched_question][1]
+            
+            # Check if similar result already cached
+            similar = self._find_similar(query_embedding, self._results_cache)
+            if similar:
+                matched_question, similarity = similar
+                print(f"✓ Similar result already cached (sim={similarity:.3f}): '{matched_question[:50]}...'")
+                # Return completed task with cached result
+                result = self._results_cache[matched_question][1]
+                return asyncio.create_task(self._return_result(result))
+            
+            # Start new retrieval task
+            task = asyncio.create_task(self._retrieve(question, query_embedding))
+            self._tasks_cache[question] = (query_embedding, task, asyncio.get_event_loop().time())
+            
+            # Evict oldest task if over capacity
+            if len(self._tasks_cache) > self.capacity:
+                old_key = next(iter(self._tasks_cache))
+                old_task = self._tasks_cache[old_key][1]
+                if not old_task.done():
+                    old_task.cancel()
+                del self._tasks_cache[old_key]
+            
+            return task
+    
+    async def _return_result(self, result):
+        """Helper to return a result immediately."""
+        return result
+    
+    async def _retrieve(self, question: str, query_embedding: np.ndarray):
+        """Internal retrieval logic."""
+        try:
+            # Try semantic cache first
+            cache_result = await check_cache(question)
+            if cache_result:
+                matched_question, cached_context, similarity = cache_result
+                print(f"✓ Preemptive semantic cache hit! Similarity: {similarity:.3f}")
+                result = cached_context
+            else:
+                # Fetch from retriever
+                print(f"⚡ Preemptive retrieval started for: '{question[:50]}...'")
+                results = await asyncio.wait_for(
+                    fetch_from_retriever(question), 
+                    timeout=2.0
+                )
+                result = "\n".join(node.text for node in results[:3])
+                
+                # Store in semantic cache (fire-and-forget)
+                asyncio.create_task(semantic_context_cache.set_async(question, result))
+            
+            # Store result in cache
+            async with self._lock:
+                self._results_cache[question] = (query_embedding, result, asyncio.get_event_loop().time())
+                
+                # Move to end (most recently used)
+                self._results_cache.move_to_end(question)
+                
+                # Evict oldest result if over capacity
+                if len(self._results_cache) > self.capacity:
+                    self._results_cache.popitem(last=False)
+                
+                # Remove from tasks cache
+                if question in self._tasks_cache:
+                    del self._tasks_cache[question]
+            
+            print(f"✓ Preemptive retrieval completed for: '{question[:50]}...'")
+            return result
+            
+        except asyncio.TimeoutError:
+            print(f"⚠ Preemptive retrieval timeout for: '{question[:50]}...'")
+            return None
+        except Exception as e:
+            print(f"✗ Preemptive retrieval error: {e}")
+            return None
+    
+    async def get_result(self, question: str, timeout: float = 0.5) -> Optional[str]:
+        """Get result using semantic similarity search."""
+        # Get embedding for the question
+        query_embedding = self.embed_model.get_query_embedding(question)
+        
+        async with self._lock:
+            # Check results cache first (semantic search)
+            similar = self._find_similar(query_embedding, self._results_cache)
+            if similar:
+                matched_question, similarity = similar
+                # Move to end (LRU)
+                self._results_cache.move_to_end(matched_question)
+                result = self._results_cache[matched_question][1]
+                print(f"✓ Using preemptive result (sim={similarity:.3f}): '{matched_question[:50]}...'")
+                return result
+            
+            # Check if similar task is running
+            similar = self._find_similar(query_embedding, self._tasks_cache)
+            if not similar:
+                return None
+            
+            matched_question, similarity = similar
+            task = self._tasks_cache[matched_question][1]
+        
+        # Wait for task if still running
+        if not task.done():
+            try:
+                print(f"⏳ Waiting for preemptive task (sim={similarity:.3f})...")
+                result = await asyncio.wait_for(task, timeout=timeout)
+                if result:
+                    print(f"✓ Preemptive task completed just in time!")
+                return result
+            except asyncio.TimeoutError:
+                print(f"⚠ Preemptive task timeout, fetching fresh")
+                return None
+        else:
+            # Task already done
+            try:
+                result = task.result()
+                print(f"✓ Retrieved completed preemptive task (sim={similarity:.3f})")
+                return result
+            except Exception:
+                return None
+    
+    def clear(self):
+        """Clear all cached results and cancel pending tasks."""
+        for _, (_, task, _) in self._tasks_cache.items():
+            if not task.done():
+                task.cancel()
+        self._results_cache.clear()
+        self._tasks_cache.clear()
+
+
+preemptive_cache = PreemptiveSemanticCache(
+    embed_model=embed_model,
+    capacity=50,              # Adjust based on memory
+    similarity_threshold=0.92  # Higher = stricter matching
+)
