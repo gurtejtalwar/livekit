@@ -2,10 +2,11 @@ import asyncio
 import time
 import os
 import logging
-from typing import Tuple
+from typing import AsyncIterable, Tuple
 from contextlib import contextmanager
 
 from livekit.agents import (
+    stt,
     Agent,
     AgentSession,
     AutoSubscribe,
@@ -23,6 +24,7 @@ from livekit.agents import (
     ChatMessage
 
 )
+from livekit import rtc
 from livekit.agents.llm import function_tool
 from livekit.plugins import deepgram, openai, cartesia, silero, noise_cancellation, elevenlabs, assemblyai
 from llama_index.core.schema import MetadataMode
@@ -137,17 +139,17 @@ async def fetch_from_retriever(question):
     return await retriever.aretrieve(question)
 # ---------------------- MAIN PIPELINE ----------------------
 @llm.function_tool
-async def ask_knowledge_base(context: RunContext, question: str):
+async def ask_knowledge_base(question: str):
     """Ultra-fast retrieval with streaming context"""
     # Send a verbal status update to the user after a short delay
-    async def _speak_status_update(delay: float = 0.5):
-        # await asyncio.sleep(delay)
-        await context.session.generate_reply(instructions=f"""
-            You are searching the knowledge base for \"{question}\" but it is taking a little while.
-            Update the user on your progress, but be very brief.
-        """)
+    # async def _speak_status_update(delay: float = 0.5):
+    #     # await asyncio.sleep(delay)
+    #     await context.session.generate_reply(instructions=f"""
+    #         You are searching the knowledge base for \"{question}\" but it is taking a little while.
+    #         Update the user on your progress, but be very brief.
+    #     """)
     
-    status_update_task = asyncio.create_task(_speak_status_update(0.5))
+    # status_update_task = asyncio.create_task(_speak_status_update(0.5))
 
     # # Check if we have preemptive result (semantic match)
     # if preemptive_cache:
@@ -179,7 +181,7 @@ async def ask_knowledge_base(context: RunContext, question: str):
             # Cancel pending retriever
             for task in pending:
                 task.cancel()
-            status_update_task.cancel()
+            # status_update_task.cancel()
             return cached_context
     
     # Use retriever results
@@ -196,7 +198,7 @@ async def ask_knowledge_base(context: RunContext, question: str):
     asyncio.create_task(semantic_context_cache.set_async(question, context))
     
     # Cancel status update if search completed before timeout
-    status_update_task.cancel()
+    # status_update_task.cancel()
 
     return context
 # ---------------------- PRE-WARM CONNECTIONS ----------------------
@@ -248,47 +250,65 @@ class InboundAgent(Agent):
             allow_interruptions=True,
             use_tts_aligned_transcript=False
         )
+
+    async def stt_node(
+        self, audio: AsyncIterable[rtc.AudioFrame], model_settings: ModelSettings
+    ) -> Optional[AsyncIterable[stt.SpeechEvent]]:
+        async def filtered_audio():
+            async for frame in audio:
+                # insert custom audio preprocessing here
+                # print(f"Audio frame received: {len(frame.data)} bytes\nFrame: {frame}")
+                yield frame
+        
+        async for event in Agent.default.stt_node(self, filtered_audio(), model_settings):
+            # insert custom text postprocessing here 
+            # print(f"STT event: {event}")
+            yield event
+            
     async def llm_node(
         self, chat_ctx, tools, model_settings=None
     ):
         """Optimized LLM node with minimal overhead"""
         # with Timer("LLM Node:"):
-        async for chunk in super().llm_node(chat_ctx, tools, model_settings):
-            yield chunk 
+        return None
+        # async for chunk in super().llm_node(chat_ctx, tools, model_settings):
+        #     yield chunk 
 
-    # async def on_user_turn_completed(self, turn_ctx: ChatContext, new_message: ChatMessage):
-    #     """
-    #     Called when user finishes speaking - perfect time to start preemptive retrieval!
-    #     This happens BEFORE the LLM processes the message.
-    #     """
-    #     # Send a verbal status update to the user after a short delay
-    #     fast_llm_ctx = turn_ctx.copy(
+    async def on_user_turn_completed(self, turn_ctx: ChatContext, new_message: ChatMessage):
+        """
+        Called when user finishes speaking - perfect time to start preemptive retrieval!
+        This happens BEFORE the LLM processes the message.
+        """
+        context = await ask_knowledge_base(new_message.text_content)
+        self.session.say(context)
+        # # Send a verbal status update to the user after a short delay
+        # fast_llm_ctx = turn_ctx.copy(
 
-    #         exclude_instructions=True, exclude_function_call=True
-    #     ).truncate(max_items=3)
-    #     fast_llm_ctx.items.insert(0, self._fast_llm_prompt)
-    #     fast_llm_ctx.items.append(new_message)
+        #     exclude_instructions=True, exclude_function_call=True
+        # ).truncate(max_items=3)
+        # fast_llm_ctx.items.insert(0, self._fast_llm_prompt)
+        # fast_llm_ctx.items.append(new_message)
 
-    #     filler_response_fut = asyncio.Future[str]()
+        # filler_response_fut = asyncio.Future[str]()
 
-    #     async def _speak_status_update(delay: float = 0.5):
-    #         await asyncio.sleep(delay)
-    #         async for chunk in self.llm.chat(chat_ctx=fast_llm_ctx).to_str_iterable():
-    #             filler_response += chunk
-    #         await turn_ctx.session.generate_reply(instructions=f"""
-    #             You are searching the knowledge base for \"{new_message.text_content}\" but it is taking a little while.
-    #             Update the user on your progress, but be very brief.
-    #         """)
-    #         filler_response_fut.set_result(filler_response)
+        # async def _speak_status_update(delay: float = 0.5):
+        #     await asyncio.sleep(delay)
+        #     async for chunk in self.llm.chat(chat_ctx=fast_llm_ctx).to_str_iterable():
+        #         filler_response += chunk
+        #     await turn_ctx.session.generate_reply(instructions=f"""
+        #         You are searching the knowledge base for \"{new_message.text_content}\" but it is taking a little while.
+        #         Update the user on your progress, but be very brief.
+        #     """)
+        #     filler_response_fut.set_result(filler_response)
 
-    #     status_update_task = asyncio.create_task(_speak_status_update(0.2))
+        # status_update_task = asyncio.create_task(_speak_status_update(0.2))
 
-    #     rag_content = await ask_knowledge_base(new_message.text_content)
+        # rag_content = await ask_knowledge_base(new_message.text_content)
 
-    #     status_update_task.cancel()
+        # status_update_task.cancel()
         
-    #     turn_ctx.add_message(role="assistant", content=rag_content)
-    #     await self.update_chat_ctx(turn_ctx)
+        # turn_ctx.add_message(role="assistant", content=rag_content)
+        # await self.update_chat_ctx(turn_ctx)
 
         # print(f"\n{'='*60}")
         # print(f"🎤 User turn completed: '{new_message.content[:100]}...'")
@@ -339,8 +359,13 @@ class InboundAgent(Agent):
     #     return any(indicator in question_lower for indicator in retrieve_indicators)
 
 
-    async def tts_node(self, text, model_settings):
-        return super().tts_node(text, model_settings)
+    async def tts_node(
+        self, text: AsyncIterable[str], model_settings: ModelSettings
+    ) -> AsyncIterable[rtc.AudioFrame]:
+        # Insert custom text processing here
+        async for frame in Agent.default.tts_node(self, text, model_settings):
+            # Insert custom audio processing here
+            yield frame
 
 async def inbound_entrypoint(ctx: JobContext):
     # Prewarm in parallel with connection
@@ -355,6 +380,7 @@ async def inbound_entrypoint(ctx: JobContext):
         room=ctx.room,
         agent=agent,
         room_input_options=RoomInputOptions(
+            text_enabled=False,
             noise_cancellation=noise_cancellation.BVCTelephony(),
             close_on_disconnect=True,
         ),
