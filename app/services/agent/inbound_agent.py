@@ -218,10 +218,10 @@ class InboundAgent(Agent):
         super().__init__(
             instructions=(
                 "You are a Eminence Technology customer service AI assistant. "
-                "For ANY Eminence Technology-related or factual question, you MUST use the 'ask_knowledge_base' tool FIRST. "
-                "Do not rely on your internal memory. "
-                "After receiving the tool's output, use it to construct a conversational, human-like answer. "
-                "If the tool returns no relevant data, politely say you don't have enough information. "
+                # "For ANY Eminence Technology-related or factual question, you MUST use the 'ask_knowledge_base' tool FIRST. "
+                # "Do not rely on your internal memory. "
+                "Construct a conversational, human-like answer. "
+                # "If the tool returns no relevant data, politely say you don't have enough information. "
                 "Keep responses concise and optimized for spoken delivery. PLEASE MAKE SURE THAT THE RESPONSES ARE SHORT SO THAT IT MIMICKS A PHONE CONVERSATION BETWEEN HUMANS. "
                 "Do not respond with asterick, bullet points,etc  please respond how you would in a normal conversation with a human. "
                 "PLEASE keep your tone friendly and enthusiastic. Always Respond politely to the customer. You are allowed to do small talks with the customer BUT DO NOT STRAY AWAY FROM THE BUSINESS AND OBJECTIVE OF THE CONVERSATION"
@@ -230,7 +230,7 @@ class InboundAgent(Agent):
             ),
             stt=assemblyai.STT(),
             # stt=assemblyai.STT(model="universal-streaming-multilingual"),
-            llm=openai.LLM(tool_choice="auto", max_completion_tokens=50),
+            llm=openai.LLM(max_completion_tokens=50),
             # tts=elevenlabs.TTS(),#model="eleven_v3",voice_id="EkK5I93UQWFDigLMpZcX"),
             tts=cartesia.TTS
             (
@@ -244,7 +244,7 @@ class InboundAgent(Agent):
             #                     min_silence_duration=0.3),
             # turn_detection=EnglishModel(),
             # preemptive_generation=True,
-            tools=[get_current_time, ask_knowledge_base],
+            # tools=[get_current_time, ask_knowledge_base],
             min_endpointing_delay=0.1,  # Minimum wait after silence
             max_endpointing_delay=1,  # Maximum wait before forcing turn end
             allow_interruptions=True,
@@ -270,17 +270,16 @@ class InboundAgent(Agent):
     ):
         """Optimized LLM node with minimal overhead"""
         # with Timer("LLM Node:"):
-        return None
-        # async for chunk in super().llm_node(chat_ctx, tools, model_settings):
-        #     yield chunk 
+        async for chunk in super().llm_node(chat_ctx, tools, model_settings):
+            yield chunk 
 
-    async def on_user_turn_completed(self, turn_ctx: ChatContext, new_message: ChatMessage):
-        """
-        Called when user finishes speaking - perfect time to start preemptive retrieval!
-        This happens BEFORE the LLM processes the message.
-        """
-        context = await ask_knowledge_base(new_message.text_content)
-        self.session.say(context)
+    # async def on_user_turn_completed(self, turn_ctx: ChatContext, new_message: ChatMessage):
+    #     """
+    #     Called when user finishes speaking - perfect time to start preemptive retrieval!
+    #     This happens BEFORE the LLM processes the message.
+    #     """
+    #     context = await ask_knowledge_base(new_message.text_content)
+    #     self.session.say(context)
         # # Send a verbal status update to the user after a short delay
         # fast_llm_ctx = turn_ctx.copy(
 
@@ -369,18 +368,17 @@ class InboundAgent(Agent):
 
 async def inbound_entrypoint(ctx: JobContext):
     # Prewarm in parallel with connection
-    prewarm_task = asyncio.create_task(prewarm())
+    # prewarm_task = asyncio.create_task(prewarm())
     await ctx.connect(auto_subscribe=AutoSubscribe.AUDIO_ONLY)
-    await prewarm_task  # Ensure prewarm completes
+    # await prewarm_task  # Ensure prewarm completes
     
     agent = InboundAgent()
-    session = AgentSession()
+    session = AgentSession(preemptive_generation=True)
 
     await session.start(
         room=ctx.room,
         agent=agent,
         room_input_options=RoomInputOptions(
-            text_enabled=False,
             noise_cancellation=noise_cancellation.BVCTelephony(),
             close_on_disconnect=True,
         ),
