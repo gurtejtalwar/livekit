@@ -24,7 +24,7 @@ from livekit.agents import (
 
 )
 from livekit.agents.llm import function_tool
-from livekit.plugins import deepgram, openai, cartesia, silero, noise_cancellation, elevenlabs, assemblyai
+from livekit.plugins import deepgram, openai, cartesia, silero, noise_cancellation, elevenlabs, assemblyai, google
 from llama_index.core.schema import MetadataMode
 from llama_index.embeddings.openai import OpenAIEmbedding
 
@@ -136,69 +136,69 @@ async def fetch_from_retriever(question):
     # with Timer("Retriever Fetch"):
     return await retriever.aretrieve(question)
 # ---------------------- MAIN PIPELINE ----------------------
-@llm.function_tool
-async def ask_knowledge_base(context: RunContext, question: str):
-    """Ultra-fast retrieval with streaming context"""
-    # Send a verbal status update to the user after a short delay
-    async def _speak_status_update(delay: float = 0.5):
-        # await asyncio.sleep(delay)
-        await context.session.generate_reply(instructions=f"""
-            You are searching the knowledge base for \"{question}\" but it is taking a little while.
-            Update the user on your progress, but be very brief.
-        """)
+# @llm.function_tool
+# async def ask_knowledge_base(context: RunContext, question: str):
+#     """Ultra-fast retrieval with streaming context"""
+#     # Send a verbal status update to the user after a short delay
+#     # async def _speak_status_update(delay: float = 0.5):
+#     #     # await asyncio.sleep(delay)
+#     #     await context.session.generate_reply(instructions=f"""
+#     #         You are searching the knowledge base for \"{question}\" but it is taking a little while.
+#     #         Update the user on your progress, but be very brief.
+#     #     """)
     
-    status_update_task = asyncio.create_task(_speak_status_update(0.5))
+#     # status_update_task = asyncio.create_task(_speak_status_update(0.5))
 
-    # # Check if we have preemptive result (semantic match)
-    # if preemptive_cache:
-    #     preemptive_result = await preemptive_cache.get_result(question, timeout=0.5)
-    #     if preemptive_result:
-    #         print(f"⚡ Preemptive result found")
-    #         return preemptive_result
+#     # # Check if we have preemptive result (semantic match)
+#     # if preemptive_cache:
+#     #     preemptive_result = await preemptive_cache.get_result(question, timeout=0.5)
+#     #     if preemptive_result:
+#     #         print(f"⚡ Preemptive result found")
+#     #         return preemptive_result
         
-    # print(f"⚡ No preemptive result, fetching now: '{question[:50]}...'")
+#     # print(f"⚡ No preemptive result, fetching now: '{question[:50]}...'")
 
-    # Run cache and retriever in parallel
-    cache_task = asyncio.create_task(check_cache(question))
-    retriever_task = asyncio.create_task(fetch_from_retriever(question))
+#     # Run cache and retriever in parallel
+#     cache_task = asyncio.create_task(check_cache(question))
+#     retriever_task = asyncio.create_task(fetch_from_retriever(question))
     
-    # Wait for whichever completes first
-    done, pending = await asyncio.wait(
-        {cache_task, retriever_task},
-        return_when=asyncio.FIRST_COMPLETED,
-        timeout=0.5  # Max 500ms wait
-    )
-    print(f"Done: {done}\nPending: {pending}")
-    # Check cache first
-    if cache_task in done:
-        cache_result = await cache_task
-        if cache_result:
-            matched_question, cached_context, similarity = cache_result
-            print(f"✓ Cache Hit! Similarity: {similarity:.3f}")
+#     # Wait for whichever completes first
+#     done, pending = await asyncio.wait(
+#         {cache_task, retriever_task},
+#         return_when=asyncio.FIRST_COMPLETED,
+#         timeout=0.5  # Max 500ms wait
+#     )
+#     print(f"Done: {done}\nPending: {pending}")
+#     # Check cache first
+#     if cache_task in done:
+#         cache_result = await cache_task
+#         if cache_result:
+#             matched_question, cached_context, similarity = cache_result
+#             print(f"✓ Cache Hit! Similarity: {similarity:.3f}")
             
-            # Cancel pending retriever
-            for task in pending:
-                task.cancel()
-            status_update_task.cancel()
-            return cached_context
+#             # Cancel pending retriever
+#             for task in pending:
+#                 task.cancel()
+#             # status_update_task.cancel()
+#             return cached_context
     
-    # Use retriever results
-    if retriever_task in done:
-        results = await retriever_task
-    else:
-        results = await retriever_task  # Wait if not done yet
+#     # Use retriever results
+#     if retriever_task in done:
+#         results = await retriever_task
+#     else:
+#         results = await retriever_task  # Wait if not done yet
     
-    # Build context with LIMIT
-    context_parts = [node.text for node in results[:3]]  # Limit to top 3 for speed
-    context = "\n".join(context_parts)
+#     # Build context with LIMIT
+#     context_parts = [node.text for node in results[:3]]  # Limit to top 3 for speed
+#     context = "\n".join(context_parts)
     
-    # Async cache update (fire and forget)
-    asyncio.create_task(semantic_context_cache.set_async(question, context))
+#     # Async cache update (fire and forget)
+#     asyncio.create_task(semantic_context_cache.set_async(question, context))
     
-    # Cancel status update if search completed before timeout
-    status_update_task.cancel()
+#     # Cancel status update if search completed before timeout
+#     # status_update_task.cancel()
 
-    return context
+#     return context
 # ---------------------- PRE-WARM CONNECTIONS ----------------------
 async def prewarm():
     """Pre-initialize HTTPS sessions and caches to avoid cold-start delay."""
@@ -226,28 +226,91 @@ class InboundAgent(Agent):
                 "Format numbers naturally (e.g., 'five hundred and twelve gigabytes')." \
                 # "Please return the text with formatted emotion type before sentence to indicate the TTS model on which emotion to synthesie the speed with, for eg, [enthusiastically] Hello, how are you."
             ),
-            stt=assemblyai.STT(),
-            # stt=assemblyai.STT(model="universal-streaming-multilingual"),
-            llm=openai.LLM(tool_choice="auto", max_completion_tokens=50),
-            # tts=elevenlabs.TTS(),#model="eleven_v3",voice_id="EkK5I93UQWFDigLMpZcX"),
-            tts=cartesia.TTS
-            (
-                model="sonic-3",
-                voice="6ccbfb76-1fc6-48f7-b71d-91ac6298247b",
-                emotion="Happy",
-                speed=1.0,
-                volume=2
-            ),
-            # vad=silero.VAD.load(min_speech_duration=0.2,
-            #                     min_silence_duration=0.3),
-            # turn_detection=EnglishModel(),
-            # preemptive_generation=True,
-            tools=[get_current_time, ask_knowledge_base],
-            min_endpointing_delay=0.1,  # Minimum wait after silence
-            max_endpointing_delay=1,  # Maximum wait before forcing turn end
-            allow_interruptions=True,
-            use_tts_aligned_transcript=False
+            # stt=assemblyai.STT(),
+            # # stt=assemblyai.STT(model="universal-streaming-multilingual"),
+            # llm=google.LLM(tool_choice="required", max_output_tokens=50),
+            # # tts=elevenlabs.TTS(),#model="eleven_v3",voice_id="EkK5I93UQWFDigLMpZcX"),
+            # tts=cartesia.TTS
+            # (
+            #     model="sonic-3",
+            #     voice="6ccbfb76-1fc6-48f7-b71d-91ac6298247b",
+            #     emotion="Happy",
+            #     speed=1.0,
+            #     volume=2
+            # ),
+            # # vad=silero.VAD.load(min_speech_duration=0.2,
+            # #                     min_silence_duration=0.3),
+            # # turn_detection=EnglishModel(),
+            # # preemptive_generation=True,
+            # tools=[get_current_time, ask_knowledge_base],
+            # min_endpointing_delay=0.1,  # Minimum wait after silence
+            # max_endpointing_delay=1,  # Maximum wait before forcing turn end
+            # allow_interruptions=True,
+            # use_tts_aligned_transcript=False
         )
+    @llm.function_tool
+    async def ask_knowledge_base(context: RunContext, question: str):
+        """Ultra-fast retrieval with streaming context"""
+        # Send a verbal status update to the user after a short delay
+        # async def _speak_status_update(delay: float = 0.5):
+        #     # await asyncio.sleep(delay)
+        #     await context.session.generate_reply(instructions=f"""
+        #         You are searching the knowledge base for \"{question}\" but it is taking a little while.
+        #         Update the user on your progress, but be very brief.
+        #     """)
+        
+        # status_update_task = asyncio.create_task(_speak_status_update(0.5))
+
+        # # Check if we have preemptive result (semantic match)
+        # if preemptive_cache:
+        #     preemptive_result = await preemptive_cache.get_result(question, timeout=0.5)
+        #     if preemptive_result:
+        #         print(f"⚡ Preemptive result found")
+        #         return preemptive_result
+            
+        # print(f"⚡ No preemptive result, fetching now: '{question[:50]}...'")
+
+        # Run cache and retriever in parallel
+        cache_task = asyncio.create_task(check_cache(question))
+        retriever_task = asyncio.create_task(fetch_from_retriever(question))
+        
+        # Wait for whichever completes first
+        done, pending = await asyncio.wait(
+            {cache_task, retriever_task},
+            return_when=asyncio.FIRST_COMPLETED,
+            timeout=0.5  # Max 500ms wait
+        )
+        print(f"Done: {done}\nPending: {pending}")
+        # Check cache first
+        if cache_task in done:
+            cache_result = await cache_task
+            if cache_result:
+                matched_question, cached_context, similarity = cache_result
+                print(f"✓ Cache Hit! Similarity: {similarity:.3f}")
+                
+                # Cancel pending retriever
+                for task in pending:
+                    task.cancel()
+                # status_update_task.cancel()
+                return cached_context
+        
+        # Use retriever results
+        if retriever_task in done:
+            results = await retriever_task
+        else:
+            results = await retriever_task  # Wait if not done yet
+        
+        # Build context with LIMIT
+        context_parts = [node.text for node in results[:3]]  # Limit to top 3 for speed
+        context = "\n".join(context_parts)
+        
+        # Async cache update (fire and forget)
+        asyncio.create_task(semantic_context_cache.set_async(question, context))
+        
+        # Cancel status update if search completed before timeout
+        # status_update_task.cancel()
+
+        return context
     async def llm_node(
         self, chat_ctx, tools, model_settings=None
     ):
@@ -343,34 +406,53 @@ class InboundAgent(Agent):
         return super().tts_node(text, model_settings)
 
 async def inbound_entrypoint(ctx: JobContext):
-    # Prewarm in parallel with connection
-    prewarm_task = asyncio.create_task(prewarm())
-    await ctx.connect(auto_subscribe=AutoSubscribe.AUDIO_ONLY)
-    await prewarm_task  # Ensure prewarm completes
-    
-    agent = InboundAgent()
-    session = AgentSession()
+    await ctx.connect()
+
+    session = AgentSession(
+        llm=openai.realtime.RealtimeModel(
+            model="gpt-4o-realtime-preview-2025-06-03",
+            tool_choice="required",
+        ),
+        # vad=silero.VAD.load(),
+        turn_detection=MultilingualModel()
+    )
 
     await session.start(
         room=ctx.room,
-        agent=agent,
-        room_input_options=RoomInputOptions(
-            noise_cancellation=noise_cancellation.BVCTelephony(),
-            close_on_disconnect=True,
-        ),
+        agent=InboundAgent()
     )
-    usage_collector = metrics.UsageCollector()
 
-    @session.on("metrics_collected")
-    def _on_metrics_collected(ev: MetricsCollectedEvent):
-        metrics.log_metrics(ev.metrics)
+    await session.generate_reply()
 
-    async def log_usage():
-        summary = usage_collector.get_summary()
-        logger.info(f"Usage: {summary}")
+# async def inbound_entrypoint(ctx: JobContext):
+#     # Prewarm in parallel with connection
+#     prewarm_task = asyncio.create_task(prewarm())
+#     await ctx.connect(auto_subscribe=AutoSubscribe.AUDIO_ONLY)
+#     await prewarm_task  # Ensure prewarm completes
+    
+#     agent = InboundAgent()
+#     session = AgentSession()
 
-    ctx.add_shutdown_callback(log_usage)
-    await session.say("Thanks for calling Eminence Technology customer support. My name is Lala, let me know how I can assist you")
+#     await session.start(
+#         room=ctx.room,
+#         agent=agent,
+#         room_input_options=RoomInputOptions(
+#             noise_cancellation=noise_cancellation.BVCTelephony(),
+#             close_on_disconnect=True,
+#         ),
+#     )
+#     usage_collector = metrics.UsageCollector()
+
+#     @session.on("metrics_collected")
+#     def _on_metrics_collected(ev: MetricsCollectedEvent):
+#         metrics.log_metrics(ev.metrics)
+
+#     async def log_usage():
+#         summary = usage_collector.get_summary()
+#         logger.info(f"Usage: {summary}")
+
+#     ctx.add_shutdown_callback(log_usage)
+#     await session.say("Thanks for calling Eminence Technology customer support. My name is Lala, let me know how I can assist you")
 
 import numpy as np
 # Global cache for preemptive retrieval results
