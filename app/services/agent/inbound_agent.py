@@ -2,7 +2,7 @@ import asyncio
 import time
 import os
 import logging
-from typing import Tuple
+from typing import Tuple, AsyncIterable
 from contextlib import contextmanager
 
 from livekit.agents import (
@@ -14,15 +14,17 @@ from livekit.agents import (
     WorkerOptions,
     cli,
     llm,
+    stt,
     RoomInputOptions,
     RoomOutputOptions,
     metrics, 
     MetricsCollectedEvent,
     RunContext,
     ChatContext, 
-    ChatMessage
+    ChatMessage,
 
 )
+from livekit import rtc
 from livekit.agents.llm import function_tool
 from livekit.plugins import deepgram, openai, cartesia, silero, noise_cancellation, elevenlabs, assemblyai
 from llama_index.core.schema import MetadataMode
@@ -140,14 +142,14 @@ async def fetch_from_retriever(question):
 async def ask_knowledge_base(context: RunContext, question: str):
     """Ultra-fast retrieval with streaming context"""
     # Send a verbal status update to the user after a short delay
-    async def _speak_status_update(delay: float = 0.5):
-        # await asyncio.sleep(delay)
-        await context.session.generate_reply(instructions=f"""
-            You are searching the knowledge base for \"{question}\" but it is taking a little while.
-            Update the user on your progress, but be very brief.
-        """)
+    # async def _speak_status_update(delay: float = 0.5):
+    #     # await asyncio.sleep(delay)
+    #     await context.session.generate_reply(instructions=f"""
+    #         You are searching the knowledge base for \"{question}\" but it is taking a little while.
+    #         Update the user on your progress, but be very brief.
+    #     """)
     
-    status_update_task = asyncio.create_task(_speak_status_update(0.5))
+    # status_update_task = asyncio.create_task(_speak_status_update(0.5))
 
     # # Check if we have preemptive result (semantic match)
     # if preemptive_cache:
@@ -179,7 +181,7 @@ async def ask_knowledge_base(context: RunContext, question: str):
             # Cancel pending retriever
             for task in pending:
                 task.cancel()
-            status_update_task.cancel()
+            # status_update_task.cancel()
             return cached_context
     
     # Use retriever results
@@ -196,7 +198,7 @@ async def ask_knowledge_base(context: RunContext, question: str):
     asyncio.create_task(semantic_context_cache.set_async(question, context))
     
     # Cancel status update if search completed before timeout
-    status_update_task.cancel()
+    # status_update_task.cancel()
 
     return context
 # ---------------------- PRE-WARM CONNECTIONS ----------------------
@@ -210,25 +212,169 @@ async def prewarm():
     _ = get_cached_embedding("ping")  # Warm cache
     print("Prewarm complete.")
 
-###### Inbound RAG Agent ######
-class InboundAgent(Agent):
+# ###### Inbound RAG Agent ######
+# class InboundAgent(Agent):
+#     def __init__(self):
+#         super().__init__(
+#             instructions=(
+#                 "You are a Eminence Technology customer service AI assistant. "
+#                 # "For ANY Eminence Technology-related or factual question, you MUST use the 'ask_knowledge_base' tool FIRST. "
+#                 # "Do not rely on your internal memory. "
+#                 # "After receiving the tool's output, use it to construct a conversational, human-like answer. "
+#                 # "If the tool returns no relevant data, politely say you don't have enough information. "
+#                 # "Keep responses concise and optimized for spoken delivery. PLEASE MAKE SURE THAT THE RESPONSES ARE SHORT SO THAT IT MIMICKS A PHONE CONVERSATION BETWEEN HUMANS. "
+#                 # "Do not respond with asterick, bullet points,etc  please respond how you would in a normal conversation with a human. "
+#                 # "PLEASE keep your tone friendly and enthusiastic. Always Respond politely to the customer. You are allowed to do small talks with the customer BUT DO NOT STRAY AWAY FROM THE BUSINESS AND OBJECTIVE OF THE CONVERSATION"
+#                 # "Format numbers naturally (e.g., 'five hundred and twelve gigabytes')." \
+#                 # "Please return the text with formatted emotion type before sentence to indicate the TTS model on which emotion to synthesie the speed with, for eg, [enthusiastically] Hello, how are you."
+#             ),
+#             stt=assemblyai.STT(
+#                 end_of_turn_confidence_threshold=0.2,
+#                 min_end_of_turn_silence_when_confident=0.3,
+#                 max_end_of_turn_silence=0.5
+#             ),
+#             # stt=assemblyai.STT(model="universal-streaming-multilingual"),
+#             llm=openai.LLM(tool_choice="auto", max_completion_tokens=50),
+#             # tts=elevenlabs.TTS(),#model="eleven_v3",voice_id="EkK5I93UQWFDigLMpZcX"),
+#             tts=cartesia.TTS
+#             (
+#                 model="sonic-3",
+#                 voice="6ccbfb76-1fc6-48f7-b71d-91ac6298247b",
+#                 emotion="Happy",
+#                 speed=1.0,
+#                 volume=2
+#             ),
+#             # vad=silero.VAD.load(min_speech_duration=0.2,
+#             #                     min_silence_duration=0.3),
+#             # turn_detection=EnglishModel(),
+#             # preemptive_generation=True,
+#             # tools=[get_current_time],# ask_knowledge_base],
+#             min_endpointing_delay=0.1,  # Minimum wait after silence
+#             max_endpointing_delay=0.5,  # Maximum wait before forcing turn end
+#             allow_interruptions=True,
+#             use_tts_aligned_transcript=False
+#         )
+#     # async def llm_node(
+#     #     self, chat_ctx, tools, model_settings=None
+#     # ):
+#     #     """Optimized LLM node with minimal overhead"""
+#     #     # with Timer("LLM Node:"):
+#     #     async for chunk in super().llm_node(chat_ctx, tools, model_settings):
+#     #         yield chunk 
+
+#     # async def on_user_turn_completed(self, turn_ctx: ChatContext, new_message: ChatMessage):
+#     #     """
+#     #     Called when user finishes speaking - perfect time to start preemptive retrieval!
+#     #     This happens BEFORE the LLM processes the message.
+#     #     """
+#     #     # Send a verbal status update to the user after a short delay
+#     #     fast_llm_ctx = turn_ctx.copy(
+
+#     #         exclude_instructions=True, exclude_function_call=True
+#     #     ).truncate(max_items=3)
+#     #     fast_llm_ctx.items.insert(0, self._fast_llm_prompt)
+#     #     fast_llm_ctx.items.append(new_message)
+
+#     #     filler_response_fut = asyncio.Future[str]()
+
+#     #     async def _speak_status_update(delay: float = 0.5):
+#     #         await asyncio.sleep(delay)
+#     #         async for chunk in self.llm.chat(chat_ctx=fast_llm_ctx).to_str_iterable():
+#     #             filler_response += chunk
+#     #         await turn_ctx.session.generate_reply(instructions=f"""
+#     #             You are searching the knowledge base for \"{new_message.text_content}\" but it is taking a little while.
+#     #             Update the user on your progress, but be very brief.
+#     #         """)
+#     #         filler_response_fut.set_result(filler_response)
+
+#     #     status_update_task = asyncio.create_task(_speak_status_update(0.2))
+
+#     #     rag_content = await ask_knowledge_base(new_message.text_content)
+
+#     #     status_update_task.cancel()
+        
+#     #     turn_ctx.add_message(role="assistant", content=rag_content)
+#     #     await self.update_chat_ctx(turn_ctx)
+
+#         # print(f"\n{'='*60}")
+#         # print(f"🎤 User turn completed: '{new_message.content[:100]}...'")
+#         # print(f"{'='*60}\n")
+        
+#         # user_question = new_message.text_content.strip()
+        
+#         # # Decide if we should preemptively retrieve
+#         # should_retrieve = self._should_preemptively_retrieve(user_question)
+        
+#         # if should_retrieve and preemptive_cache:
+#         #     print(f"⚡ Starting preemptive semantic retrieval...")
+#         #     # Start retrieval in background (non-blocking)
+#         #     asyncio.create_task(preemptive_cache.start_retrieval(user_question))
+#         # else:
+#         #     print(f"⏭ Skipping preemptive retrieval (doesn't look like a KB question)")
+        
+#         # await super().on_user_turn_completed(turn_ctx, new_message)
+    
+    
+#     # def _should_preemptively_retrieve(self, question: str) -> bool:
+#     #     """
+#     #     Heuristic to decide if we should preemptively retrieve.
+#     #     Returns True if question likely needs knowledge base.
+#     #     """
+#     #     question_lower = question.lower()
+        
+#     #     # Skip if too short or greeting
+#     #     if len(question.split()) < 3:
+#     #         return False
+        
+#     #     # Skip common greetings/small talk
+#     #     greeting_patterns = [
+#     #         "hello", "hi ", "hey", "good morning", "good afternoon",
+#     #         "how are you", "thanks", "thank you", "bye", "goodbye"
+#     #     ]
+#     #     if any(pattern in question_lower for pattern in greeting_patterns):
+#     #         return False
+        
+#     #     # Retrieve if contains question words or product-related terms
+#     #     retrieve_indicators = [
+#     #         "what", "how", "when", "where", "why", "can you",
+#     #         "tell me", "explain", "information", "about",
+#     #         "product", "price", "feature", "service", "support",
+#     #         "eminence", "technology", "help with"
+#     #     ]
+        
+#     #     return any(indicator in question_lower for indicator in retrieve_indicators)
+
+
+#     # async def tts_node(self, text, model_settings):
+#     #     return super().tts_node(text, model_settings)
+
+class KnowledgeBaseAgent(Agent):
     def __init__(self):
         super().__init__(
             instructions=(
                 "You are a Eminence Technology customer service AI assistant. "
-                "For ANY Eminence Technology-related or factual question, you MUST use the 'ask_knowledge_base' tool FIRST. "
-                "Do not rely on your internal memory. "
-                "After receiving the tool's output, use it to construct a conversational, human-like answer. "
-                "If the tool returns no relevant data, politely say you don't have enough information. "
-                "Keep responses concise and optimized for spoken delivery. PLEASE MAKE SURE THAT THE RESPONSES ARE SHORT SO THAT IT MIMICKS A PHONE CONVERSATION BETWEEN HUMANS. "
-                "Do not respond with asterick, bullet points,etc  please respond how you would in a normal conversation with a human. "
-                "PLEASE keep your tone friendly and enthusiastic. Always Respond politely to the customer. You are allowed to do small talks with the customer BUT DO NOT STRAY AWAY FROM THE BUSINESS AND OBJECTIVE OF THE CONVERSATION"
-                "Format numbers naturally (e.g., 'five hundred and twelve gigabytes')." \
+                # "For ANY Eminence Technology-related or factual question, you MUST use the 'ask_knowledge_base' tool FIRST. "
+                # "Do not rely on your internal memory. "
+                # "After receiving the tool's output, use it to construct a conversational, human-like answer. "
+                # "If the tool returns no relevant data, politely say you don't have enough information. "
+                # "Keep responses concise and optimized for spoken delivery. PLEASE MAKE SURE THAT THE RESPONSES ARE SHORT SO THAT IT MIMICKS A PHONE CONVERSATION BETWEEN HUMANS. "
+                # "Do not respond with asterick, bullet points,etc  please respond how you would in a normal conversation with a human. "
+                # "PLEASE keep your tone friendly and enthusiastic. Always Respond politely to the customer. You are allowed to do small talks with the customer BUT DO NOT STRAY AWAY FROM THE BUSINESS AND OBJECTIVE OF THE CONVERSATION"
+                # "Format numbers naturally (e.g., 'five hundred and twelve gigabytes')." \
                 # "Please return the text with formatted emotion type before sentence to indicate the TTS model on which emotion to synthesie the speed with, for eg, [enthusiastically] Hello, how are you."
             ),
-            stt=assemblyai.STT(),
+            # stt=deepgram.STT(
+            #     interim_results=True,
+            #     endpointing_ms=0.1,
+            #     mip_opt_out=True
+            # ),
+            stt=assemblyai.STT(
+                end_of_turn_confidence_threshold=0.2,
+                min_end_of_turn_silence_when_confident=0.3,
+                max_turn_silence=0.5
+            ),
             # stt=assemblyai.STT(model="universal-streaming-multilingual"),
-            llm=openai.LLM(tool_choice="auto", max_completion_tokens=50),
+            llm=openai.LLM(tool_choice="none", max_completion_tokens=50),
             # tts=elevenlabs.TTS(),#model="eleven_v3",voice_id="EkK5I93UQWFDigLMpZcX"),
             tts=cartesia.TTS
             (
@@ -242,105 +388,106 @@ class InboundAgent(Agent):
             #                     min_silence_duration=0.3),
             # turn_detection=EnglishModel(),
             # preemptive_generation=True,
-            tools=[get_current_time, ask_knowledge_base],
+            # tools=[get_current_time],# ask_knowledge_base],
             min_endpointing_delay=0.1,  # Minimum wait after silence
-            max_endpointing_delay=1,  # Maximum wait before forcing turn end
+            max_endpointing_delay=0.5,  # Maximum wait before forcing turn end
             allow_interruptions=True,
             use_tts_aligned_transcript=False
         )
-    async def llm_node(
-        self, chat_ctx, tools, model_settings=None
-    ):
-        """Optimized LLM node with minimal overhead"""
-        # with Timer("LLM Node:"):
-        async for chunk in super().llm_node(chat_ctx, tools, model_settings):
-            yield chunk 
-
-    # async def on_user_turn_completed(self, turn_ctx: ChatContext, new_message: ChatMessage):
-    #     """
-    #     Called when user finishes speaking - perfect time to start preemptive retrieval!
-    #     This happens BEFORE the LLM processes the message.
-    #     """
-    #     # Send a verbal status update to the user after a short delay
-    #     fast_llm_ctx = turn_ctx.copy(
-
-    #         exclude_instructions=True, exclude_function_call=True
-    #     ).truncate(max_items=3)
-    #     fast_llm_ctx.items.insert(0, self._fast_llm_prompt)
-    #     fast_llm_ctx.items.append(new_message)
-
-    #     filler_response_fut = asyncio.Future[str]()
-
-    #     async def _speak_status_update(delay: float = 0.5):
-    #         await asyncio.sleep(delay)
-    #         async for chunk in self.llm.chat(chat_ctx=fast_llm_ctx).to_str_iterable():
-    #             filler_response += chunk
-    #         await turn_ctx.session.generate_reply(instructions=f"""
-    #             You are searching the knowledge base for \"{new_message.text_content}\" but it is taking a little while.
-    #             Update the user on your progress, but be very brief.
-    #         """)
-    #         filler_response_fut.set_result(filler_response)
-
-    #     status_update_task = asyncio.create_task(_speak_status_update(0.2))
-
-    #     rag_content = await ask_knowledge_base(new_message.text_content)
-
-    #     status_update_task.cancel()
+        self.text_buffer = []
+        self.buffer_timeout = 1.5  # seconds to wait before triggering KB search
+        self.min_words = 5  # minimum words before triggering search
         
-    #     turn_ctx.add_message(role="assistant", content=rag_content)
-    #     await self.update_chat_ctx(turn_ctx)
+    async def stt_node(
+        self, 
+        audio: AsyncIterable[rtc.AudioFrame], 
+        model_settings: ModelSettings
+    ) -> Optional[AsyncIterable[stt.SpeechEvent]]:
+        """
+        Override STT node to buffer transcribed text and trigger knowledge base searches
+        """
+        # Get the default STT events
+        events = Agent.default.stt_node(self, audio, model_settings)
+        
+        if events is None:
+            return None
+            
+        # Wrap the events to add buffering logic
+        async def buffered_events():
+            buffer_task = None
+            current_utterance = []
+            
+            async for event in events:
+                # Pass through all events
+                yield event
+                
+                # Buffer final transcriptions
+                if isinstance(event, stt.SpeechEvent):
+                    if event.type == stt.SpeechEventType.PREFLIGHT_TRANSCRIPT:
+                        text = event.alternatives[0].text.strip()
+                        if text:
+                            current_utterance.append(text)
+                            
+                            # Cancel existing buffer task if new text arrives
+                            if buffer_task and not buffer_task.done():
+                                buffer_task.cancel()
+                            
+                            # Start new buffer timeout
+                            buffer_task = asyncio.create_task(
+                                self._process_buffered_text(current_utterance[:])
+                            )
+                    
+                    elif event.type == stt.SpeechEventType.END_OF_SPEECH:
+                        # Speech ended, process immediately if we have content
+                        if current_utterance:
+                            if buffer_task and not buffer_task.done():
+                                buffer_task.cancel()
+                            await self._process_buffered_text(current_utterance)
+                            current_utterance = []
+        
+        return buffered_events()
 
-        # print(f"\n{'='*60}")
-        # print(f"🎤 User turn completed: '{new_message.content[:100]}...'")
-        # print(f"{'='*60}\n")
+    async def _process_buffered_text(self, utterance_parts: list[str]):
+        """
+        Wait for buffer timeout, then send accumulated text to knowledge base
+        """
+        await asyncio.sleep(self.buffer_timeout)
         
-        # user_question = new_message.text_content.strip()
+        full_text = " ".join(utterance_parts).strip()
+        word_count = len(full_text.split())
         
-        # # Decide if we should preemptively retrieve
-        # should_retrieve = self._should_preemptively_retrieve(user_question)
-        
-        # if should_retrieve and preemptive_cache:
-        #     print(f"⚡ Starting preemptive semantic retrieval...")
-        #     # Start retrieval in background (non-blocking)
-        #     asyncio.create_task(preemptive_cache.start_retrieval(user_question))
-        # else:
-        #     print(f"⏭ Skipping preemptive retrieval (doesn't look like a KB question)")
-        
-        # await super().on_user_turn_completed(turn_ctx, new_message)
-    
-    
-    # def _should_preemptively_retrieve(self, question: str) -> bool:
-    #     """
-    #     Heuristic to decide if we should preemptively retrieve.
-    #     Returns True if question likely needs knowledge base.
-    #     """
-    #     question_lower = question.lower()
-        
-    #     # Skip if too short or greeting
-    #     if len(question.split()) < 3:
-    #         return False
-        
-    #     # Skip common greetings/small talk
-    #     greeting_patterns = [
-    #         "hello", "hi ", "hey", "good morning", "good afternoon",
-    #         "how are you", "thanks", "thank you", "bye", "goodbye"
-    #     ]
-    #     if any(pattern in question_lower for pattern in greeting_patterns):
-    #         return False
-        
-    #     # Retrieve if contains question words or product-related terms
-    #     retrieve_indicators = [
-    #         "what", "how", "when", "where", "why", "can you",
-    #         "tell me", "explain", "information", "about",
-    #         "product", "price", "feature", "service", "support",
-    #         "eminence", "technology", "help with"
-    #     ]
-        
-    #     return any(indicator in question_lower for indicator in retrieve_indicators)
+        # Only trigger KB search if we have enough content
+        if word_count >= self.min_words:
+            print(f"🔍 Triggering KB search: '{full_text[:100]}...'")
+            # Create a minimal context object for the KB function
+            context = type('obj', (object,), {
+                'session': self.session
+            })()
+
+            try:
+                # Fetch knowledge base results
+                updated_ctx = self.chat_ctx.copy()
+
+                kb_context = await ask_knowledge_base(context, full_text)
+                
+                # Inject the KB context into the chat for the LLM
+                if kb_context:
+                    updated_ctx.add_message(
+                        role="assistant",
+                        content=f"[Knowledge Base Context]: {kb_context}"
+                    )
+                    await self.update_chat_ctx(updated_ctx)
+                    print(f"✓ KB context injected ({len(kb_context)} chars)")
+                            # Generate reply with the KB context
+                    await self.session.generate_reply(
+                        instructions="Use the Knowledge Base Context provided above to answer the user's question accurately and concisely."
+                    )
+                # async for chunk in super().llm_node(chat_ctx, tools, model_settings):
+                #     yield chunk 
+            except Exception as e:
+                print(f"❌ KB search failed: {e}")
 
 
-    async def tts_node(self, text, model_settings):
-        return super().tts_node(text, model_settings)
 
 async def inbound_entrypoint(ctx: JobContext):
     # Prewarm in parallel with connection
@@ -348,7 +495,7 @@ async def inbound_entrypoint(ctx: JobContext):
     await ctx.connect(auto_subscribe=AutoSubscribe.AUDIO_ONLY)
     await prewarm_task  # Ensure prewarm completes
     
-    agent = InboundAgent()
+    agent = KnowledgeBaseAgent()
     session = AgentSession()
 
     await session.start(
