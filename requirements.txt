@@ -1,4 +1,4 @@
-livekit-agents[deepgram,openai,cartesia,silero,assembly,elevenlabs,turn-detector]~=1.0
+livekit-agents[deepgram,openai,cartesia,silero,assemblyai,elevenlabs,turn-detector]~=1.0
 livekit==1.0.19
 livekit-plugins-noise-cancellation~=0.2
 python-dotenv
