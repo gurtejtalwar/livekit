@@ -10,7 +10,7 @@ dependencies = [
     "langchain-openai>=1.1.2",
     "langchain-pinecone>=0.2.13",
     "livekit==1.0.19",
-    "livekit-agents[assembly,assemblyai,cartesia,deepgram,elevenlabs,groq,openai,silero,turn-detector]~=1.0",
+    "livekit-agents[assemblyai,cartesia,deepgram,elevenlabs,groq,openai,silero,turn-detector]~=1.0",
     "livekit-plugins-noise-cancellation~=0.2",
     "llama-index-core~=0.11.10",
     "llama-index-embeddings-openai~=0.2.0",
