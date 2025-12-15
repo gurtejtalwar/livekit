@@ -83,7 +83,6 @@ with Timer("Load Index, Tokenizer and Embedding Model"):
     )
 
 def embed(text):
-    with Timer("ONNX Embedding"):
         inputs = tokenizer(text, return_tensors="pt", padding=True, truncation=True)
         with torch.no_grad():
             outputs = model(**inputs)

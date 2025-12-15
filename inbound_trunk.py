@@ -19,6 +19,7 @@ async def main():
   )
 
   trunk = await livekit_api.sip.create_inbound_trunk(request)
+  print("created inbound trunk", trunk)
 
   await livekit_api.aclose()
 
