@@ -55,11 +55,6 @@ async def get_current_time() -> str:
 from pathlib import Path
 from dotenv import load_dotenv
 import os
-from llama_index.core import VectorStoreIndex, StorageContext
-from llama_index.vector_stores.pinecone import PineconeVectorStore
-from pinecone import Pinecone
-from pymongo import MongoClient
-from motor.motor_asyncio import AsyncIOMotorClient
 from functools import lru_cache
 
 load_dotenv(override=True)
