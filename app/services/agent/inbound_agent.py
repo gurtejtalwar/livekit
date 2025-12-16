@@ -135,7 +135,7 @@ class InboundAgent(Agent):
             stt=assemblyai.STT(),
             # stt=assemblyai.STT(model="universal-streaming-multilingual"),
             # llm=openai.LLM(model="gpt-4o-mini", tool_choice="auto", max_completion_tokens=50),
-            llm=groq.LLM(model="qwen/qwen3-32b", tool_choice="auto", max_completion_tokens=50),
+            llm=groq.LLM(model="qwen/qwen3-32b", tool_choice="auto", max_completion_tokens=os.environ.get("MAX_TOKENS", 100)),
             # tts=elevenlabs.TTS(),#model="eleven_v3",voice_id="EkK5I93UQWFDigLMpZcX"),
             tts=cartesia.TTS
             (
