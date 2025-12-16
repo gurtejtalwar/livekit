@@ -2,11 +2,12 @@ import asyncio
 import time
 import os
 import logging
-from typing import Tuple
+from typing import Tuple, AsyncIterable
 from contextlib import contextmanager
 
 import faiss
 import pickle
+from groq import AsyncGroq
 from optimum.onnxruntime import ORTModelForFeatureExtraction
 from transformers import AutoTokenizer
 import torch
@@ -30,7 +31,7 @@ from livekit.agents import (
 
 )
 from livekit.agents.llm import function_tool
-from livekit.plugins import deepgram, openai, cartesia, silero, noise_cancellation, elevenlabs, assemblyai
+from livekit.plugins import deepgram, openai, cartesia, silero, noise_cancellation, elevenlabs, assemblyai, groq
 
 from livekit.agents.voice.agent import ModelSettings
 from livekit.plugins.turn_detector.multilingual import MultilingualModel
@@ -46,7 +47,7 @@ from collections import OrderedDict
 from typing import Optional
 
 @function_tool
-async def get_current_time() -> str:
+async def get_current_time(input: str) -> str:
     """Get the current time."""
     from datetime import datetime
     return f"The current time is {datetime.now().strftime('%I:%M %p')}" 
@@ -58,7 +59,7 @@ import os
 from functools import lru_cache
 
 load_dotenv(override=True)
-
+GROQ_API_KEY = os.getenv("GROQ_API_KEY")
 # ---------------------- TIMER UTILITY ----------------------
 class Timer:
     def __init__(self, name):
@@ -133,7 +134,8 @@ class InboundAgent(Agent):
             ),
             stt=assemblyai.STT(),
             # stt=assemblyai.STT(model="universal-streaming-multilingual"),
-            llm=openai.LLM(model="gpt-4o-mini", tool_choice="auto", max_completion_tokens=50),
+            # llm=openai.LLM(model="gpt-4o-mini", tool_choice="auto", max_completion_tokens=50),
+            llm=groq.LLM(model="qwen/qwen3-32b", tool_choice="auto", max_completion_tokens=50),
             # tts=elevenlabs.TTS(),#model="eleven_v3",voice_id="EkK5I93UQWFDigLMpZcX"),
             tts=cartesia.TTS
             (
@@ -153,6 +155,49 @@ class InboundAgent(Agent):
             allow_interruptions=True,
             use_tts_aligned_transcript=False
         )
+    # async def llm_node(
+    #     self,
+    #     chat_ctx: llm.ChatContext,
+    #     tools: list[llm.FunctionTool],
+    #     model_settings: ModelSettings,
+    # ) -> AsyncIterable[llm.ChatChunk]:
+    #     """
+    #     Custom LLM node using Groq streaming (Qwen 2.5 32B)
+    #     """
+
+    #     client = AsyncGroq(api_key=GROQ_API_KEY)
+
+    #     # --- 1. Convert ChatContext → OpenAI-style messages ---
+    #     messages = [
+    #         {
+    #             "role": msg.role,
+    #             "content": content_to_string(msg.content),
+    #         }
+    #         for msg in chat_ctx.items
+    #     ]
+
+    #     # --- 2. Streaming completion ---
+    #     stream = await client.chat.completions.create(
+    #         model="qwen/qwen3-32b",
+    #         messages=messages,
+    #         temperature=0.3,
+    #         max_completion_tokens=100,
+    #         stream=True,
+    #     )
+
+    #     async for chunk in stream:
+    #         if not chunk.choices:
+    #             continue
+
+    #         delta = chunk.choices[0].delta
+    #         if not delta or not delta.content:
+    #             continue
+
+    #         yield llm.ChatChunk(
+    #             id="assistant-stream",
+    #             role="assistant",
+    #             content=delta.content,
+    #         )
 async def inbound_entrypoint(ctx: JobContext):
     # Prewarm in parallel with connection
     # prewarm_task = asyncio.create_task(prewarm())
@@ -182,3 +227,15 @@ async def inbound_entrypoint(ctx: JobContext):
 
     ctx.add_shutdown_callback(log_usage)
     await session.say("Thanks for calling Eminence Technology customer support. My name is Lala, let me know how I can assist you")
+
+def content_to_string(content):
+    if isinstance(content, str):
+        return content
+
+    if isinstance(content, list):
+        return " ".join(
+            item.get("text", "") if isinstance(item, dict) else str(item)
+            for item in content
+        )
+
+    return ""
