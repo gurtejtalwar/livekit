@@ -75,6 +75,7 @@ from functools import lru_cache
 
 load_dotenv(override=True)
 GROQ_API_KEY = os.getenv("GROQ_API_KEY")
+client = AsyncGroq(api_key=GROQ_API_KEY)
 # ---------------------- TIMER UTILITY ----------------------
 class Timer:
     def __init__(self, name):
@@ -175,8 +176,6 @@ class InboundAgent(Agent):
         """
         Custom LLM node using Groq streaming (Qwen 2.5 32B)
         """
-
-        client = AsyncGroq(api_key=GROQ_API_KEY)
 
         # --- 1. Convert ChatContext → OpenAI-style messages ---
         messages = [
