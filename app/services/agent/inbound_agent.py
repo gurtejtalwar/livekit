@@ -2,8 +2,13 @@ import asyncio
 import time
 import os
 import logging
+import json
+import tempfile
+import pytz
+from datetime import datetime
 from typing import Tuple, AsyncIterable
 from contextlib import contextmanager
+from dataclasses import asdict
 
 import faiss
 import pickle
@@ -31,7 +36,17 @@ from livekit.agents import (
 
 )
 from livekit.agents.llm import function_tool
-from livekit.plugins import deepgram, openai, cartesia, silero, noise_cancellation, elevenlabs, assemblyai, groq
+from livekit.plugins import (
+    deepgram, 
+    openai, 
+    cartesia, 
+    silero, 
+    noise_cancellation, 
+    elevenlabs, 
+    assemblyai, 
+    groq,
+    langchain
+)
 
 from livekit.agents.voice.agent import ModelSettings
 from livekit.plugins.turn_detector.multilingual import MultilingualModel
@@ -145,59 +160,58 @@ class InboundAgent(Agent):
                 speed=1.0,
                 volume=2
             ),
-            # vad=silero.VAD.load(min_speech_duration=0.2,
-            #                     min_silence_duration=0.3),
-            # turn_detection=EnglishModel(),
-            # preemptive_generation=True,
             tools=[get_current_time, ask_knowledge_base],
             min_endpointing_delay=0.1,  # Minimum wait after silence
             max_endpointing_delay=0.5,  # Maximum wait before forcing turn end
             allow_interruptions=True,
             use_tts_aligned_transcript=False
         )
-    # async def llm_node(
-    #     self,
-    #     chat_ctx: llm.ChatContext,
-    #     tools: list[llm.FunctionTool],
-    #     model_settings: ModelSettings,
-    # ) -> AsyncIterable[llm.ChatChunk]:
-    #     """
-    #     Custom LLM node using Groq streaming (Qwen 2.5 32B)
-    #     """
+    async def llm_node(
+        self,
+        chat_ctx: llm.ChatContext,
+        tools: list[llm.FunctionTool],
+        model_settings: ModelSettings,
+    ) -> AsyncIterable[llm.ChatChunk]:
+        """
+        Custom LLM node using Groq streaming (Qwen 2.5 32B)
+        """
 
-    #     client = AsyncGroq(api_key=GROQ_API_KEY)
+        client = AsyncGroq(api_key=GROQ_API_KEY)
 
-    #     # --- 1. Convert ChatContext → OpenAI-style messages ---
-    #     messages = [
-    #         {
-    #             "role": msg.role,
-    #             "content": content_to_string(msg.content),
-    #         }
-    #         for msg in chat_ctx.items
-    #     ]
+        # --- 1. Convert ChatContext → OpenAI-style messages ---
+        messages = [
+            {
+                "role": msg.role,
+                "content": content_to_string(msg.content),
+            }
+            for msg in chat_ctx.items
+        ]
 
-    #     # --- 2. Streaming completion ---
-    #     stream = await client.chat.completions.create(
-    #         model="qwen/qwen3-32b",
-    #         messages=messages,
-    #         temperature=0.3,
-    #         max_completion_tokens=100,
-    #         stream=True,
-    #     )
+        # --- 2. Streaming completion ---
+        stream = await client.chat.completions.create(
+            model="qwen/qwen3-32b",
+            messages=messages,
+            temperature=0.3,
+            max_completion_tokens=100,
+            stream=True,
+            reasoning_effort="none",
+        )
 
-    #     async for chunk in stream:
-    #         if not chunk.choices:
-    #             continue
+        async for chunk in stream:
+            if not chunk.choices:
+                continue
 
-    #         delta = chunk.choices[0].delta
-    #         if not delta or not delta.content:
-    #             continue
-
-    #         yield llm.ChatChunk(
-    #             id="assistant-stream",
-    #             role="assistant",
-    #             content=delta.content,
-    #         )
+            delta = chunk.choices[0].delta
+            if not delta or not delta.content:
+                continue
+            if delta.content.startswith("<think>"):
+                continue
+            yield llm.ChatChunk(
+                id="assistant-stream",
+                delta=llm.ChoiceDelta(role=delta.role,
+                                      content=delta.content,
+                                      tool_calls=[delta.tool_calls] if delta.tool_calls else []),
+            )
 async def inbound_entrypoint(ctx: JobContext):
     # Prewarm in parallel with connection
     # prewarm_task = asyncio.create_task(prewarm())
@@ -207,6 +221,8 @@ async def inbound_entrypoint(ctx: JobContext):
     agent = InboundAgent()
     session = AgentSession()
 
+    usage_collector = metrics.UsageCollector()
+    metrics_history = []
     await session.start(
         room=ctx.room,
         agent=agent,
@@ -215,17 +231,43 @@ async def inbound_entrypoint(ctx: JobContext):
             close_on_disconnect=True,
         ),
     )
-    usage_collector = metrics.UsageCollector()
 
     @session.on("metrics_collected")
     def _on_metrics_collected(ev: MetricsCollectedEvent):
         metrics.log_metrics(ev.metrics)
+        usage_collector.collect(ev.metrics)
+        metrics_history.append(ev.metrics.model_dump())
 
-    async def log_usage():
+    @session.on("session_end")
+    def _on_session_end():
+        report = ctx.make_session_report()
+        report_dict = report.to_dict()
+        ist = pytz.timezone("Asia/Kolkata")
+        current_date = datetime.now(ist).strftime("%Y%m%d_%H%M%S")
+
+        tmp_dir = tempfile.gettempdir()
+        
+        # Write session report
+        session_filename = os.path.join(
+            tmp_dir,
+            f"session_report_{ctx.room.name}_{current_date}.json"
+        )
+        with open(session_filename, "w", encoding="utf-8") as f:
+            json.dump(report_dict, f, indent=2, ensure_ascii=False)
+        print(f"Session report for {ctx.room.name} saved to {session_filename}")
+        
+        # Write metrics report
+        metrics_filename = write_metrics_to_json(usage_collector, ctx.room.name, current_date, metrics_history)
+        
+        # Log usage summary
         summary = usage_collector.get_summary()
-        logger.info(f"Usage: {summary}")
+        logger.info(
+            f"Session metrics - Tokens: {summary.llm_prompt_tokens + summary.llm_completion_tokens}, "
+            f"TTS chars: {summary.tts_characters_count}, "
+            f"STT duration: {summary.stt_audio_duration:.2f}s"
+        )
 
-    ctx.add_shutdown_callback(log_usage)
+    ctx.add_shutdown_callback(_on_session_end)
     await session.say("Thanks for calling Eminence Technology customer support. My name is Lala, let me know how I can assist you")
 
 def content_to_string(content):
@@ -239,3 +281,176 @@ def content_to_string(content):
         )
 
     return ""
+
+# ---------------------- METRICS UTILITIES ----------------------
+def write_metrics_to_json(usage_collector: metrics.UsageCollector, room_name: str, timestamp: str, metrics_history: list) -> str:
+    """
+    Write aggregated metrics and raw metrics history to a JSON file.
+    
+    Args:
+        usage_collector: UsageCollector instance with aggregated metrics
+        room_name: Name of the room for filename
+        timestamp: Formatted timestamp for filename
+        metrics_history: List of raw metric events
+    
+    Returns:
+        Path to the written metrics file
+    """
+    tmp_dir = tempfile.gettempdir()
+    
+    # Get aggregated usage summary
+    usage_summary = usage_collector.get_summary()
+    
+    # Convert UsageSummary dataclass to dict
+    usage_dict = asdict(usage_summary)
+    
+    # Extract all metrics by type for comprehensive analysis
+    llm_metrics_list = []
+    tts_metrics_list = []
+    stt_metrics_list = []
+    eou_metrics_list = []
+    vad_metrics_list = []
+    realtime_model_metrics_list = []
+    
+    for metric in metrics_history:
+        metric_type = metric.get("type")
+        
+        if metric_type == "llm_metrics":
+            llm_metrics_list.append(metric)
+        elif metric_type == "tts_metrics":
+            tts_metrics_list.append(metric)
+        elif metric_type == "stt_metrics":
+            stt_metrics_list.append(metric)
+        elif metric_type == "eou_metrics":
+            eou_metrics_list.append(metric)
+        elif metric_type == "vad_metrics":
+            vad_metrics_list.append(metric)
+        elif metric_type == "realtime_model_metrics":
+            realtime_model_metrics_list.append(metric)
+    
+    # Calculate statistics helper
+    def calc_stats(values, key=None):
+        """Calculate min, max, avg for a list of values or dict key"""
+        if key is not None:
+            values = [v.get(key) for v in values if v.get(key) is not None]
+        values = [v for v in values if v is not None and isinstance(v, (int, float)) and v >= 0]
+        
+        if not values:
+            return None
+        return {
+            "count": len(values),
+            "min": round(min(values), 4),
+            "max": round(max(values), 4),
+            "avg": round(sum(values) / len(values), 4),
+        }
+    
+    # Build comprehensive metrics report
+    metrics_report = {
+        "timestamp": timestamp,
+        "room_name": room_name,
+        "summary": {
+            "total_metrics_events": len(metrics_history),
+            "llm_calls": len(llm_metrics_list),
+            "tts_calls": len(tts_metrics_list),
+            "stt_calls": len(stt_metrics_list),
+            "eou_detections": len(eou_metrics_list),
+            "vad_events": len(vad_metrics_list),
+            "realtime_model_calls": len(realtime_model_metrics_list),
+        },
+        "usage_summary": {
+            "tokens": {
+                "llm_prompt_tokens": usage_dict["llm_prompt_tokens"],
+                "llm_prompt_cached_tokens": usage_dict["llm_prompt_cached_tokens"],
+                "llm_completion_tokens": usage_dict["llm_completion_tokens"],
+                "llm_total_tokens": usage_dict["llm_prompt_tokens"] + usage_dict["llm_completion_tokens"],
+            },
+            "llm_realtime_model": {
+                "input_text_tokens": usage_dict["llm_input_text_tokens"],
+                "input_audio_tokens": usage_dict["llm_input_audio_tokens"],
+                "input_image_tokens": usage_dict["llm_input_image_tokens"],
+                "input_cached_text_tokens": usage_dict["llm_input_cached_text_tokens"],
+                "input_cached_audio_tokens": usage_dict["llm_input_cached_audio_tokens"],
+                "input_cached_image_tokens": usage_dict["llm_input_cached_image_tokens"],
+                "output_text_tokens": usage_dict["llm_output_text_tokens"],
+                "output_audio_tokens": usage_dict["llm_output_audio_tokens"],
+                "output_image_tokens": usage_dict["llm_output_image_tokens"],
+            },
+            "tts": {
+                "characters_count": usage_dict["tts_characters_count"],
+                "audio_duration_seconds": usage_dict["tts_audio_duration"],
+            },
+            "stt": {
+                "audio_duration_seconds": usage_dict["stt_audio_duration"],
+            },
+        },
+        "performance_metrics": {
+            "llm": {
+                "ttft_seconds": calc_stats(llm_metrics_list, "ttft"),
+                "duration_seconds": calc_stats(llm_metrics_list, "duration"),
+                "tokens_per_second": calc_stats(llm_metrics_list, "tokens_per_second"),
+                "total_requests": len(llm_metrics_list),
+                "total_cancelled": sum(1 for m in llm_metrics_list if m.get("cancelled")),
+            },
+            "tts": {
+                "ttfb_seconds": calc_stats(tts_metrics_list, "ttfb"),
+                "duration_seconds": calc_stats(tts_metrics_list, "duration"),
+                "audio_duration_seconds": calc_stats(tts_metrics_list, "audio_duration"),
+                "total_requests": len(tts_metrics_list),
+                "total_cancelled": sum(1 for m in tts_metrics_list if m.get("cancelled")),
+                "streamed_count": sum(1 for m in tts_metrics_list if m.get("streamed")),
+            },
+            "stt": {
+                "audio_duration_seconds": calc_stats(stt_metrics_list, "audio_duration"),
+                "duration_seconds": calc_stats(stt_metrics_list, "duration"),
+                "total_requests": len(stt_metrics_list),
+                "streamed_count": sum(1 for m in stt_metrics_list if m.get("streamed")),
+            },
+            "eou": {
+                "end_of_utterance_delay_seconds": calc_stats(eou_metrics_list, "end_of_utterance_delay"),
+                "transcription_delay_seconds": calc_stats(eou_metrics_list, "transcription_delay"),
+                "on_user_turn_completed_delay_seconds": calc_stats(eou_metrics_list, "on_user_turn_completed_delay"),
+                "total_detections": len(eou_metrics_list),
+            },
+            "vad": {
+                "idle_time_seconds": calc_stats(vad_metrics_list, "idle_time"),
+                "inference_duration_total_seconds": calc_stats(vad_metrics_list, "inference_duration_total"),
+                "inference_count": calc_stats(vad_metrics_list, "inference_count"),
+                "total_events": len(vad_metrics_list),
+            },
+            "realtime_model": {
+                "ttft_seconds": calc_stats(realtime_model_metrics_list, "ttft"),
+                "duration_seconds": calc_stats(realtime_model_metrics_list, "duration"),
+                "tokens_per_second": calc_stats(realtime_model_metrics_list, "tokens_per_second"),
+                "total_requests": len(realtime_model_metrics_list),
+                "total_cancelled": sum(1 for m in realtime_model_metrics_list if m.get("cancelled")),
+            },
+            "conversation_latency": {
+                "estimated_total_latency_seconds": calc_stats(
+                    [
+                        {
+                            "latency": (eou.get("end_of_utterance_delay", 0) + 
+                                       next((llm.get("ttft", 0) for llm in llm_metrics_list), 0) +
+                                       next((tts.get("ttfb", 0) for tts in tts_metrics_list), 0))
+                        }
+                        for eou in eou_metrics_list[:len(tts_metrics_list)]
+                    ],
+                    "latency"
+                ),
+                "note": "Formula: eou.end_of_utterance_delay + llm.ttft + tts.ttfb",
+            },
+        },
+        "raw_metrics_count": len(metrics_history),
+        "raw_metrics": metrics_history,
+    }
+    
+    # Write to JSON file
+    filename = os.path.join(
+        tmp_dir,
+        f"metrics_{room_name}_{timestamp}.json"
+    )
+    
+    with open(filename, "w", encoding="utf-8") as f:
+        json.dump(metrics_report, f, indent=2, ensure_ascii=False, default=str)
+    
+    logger.info(f"Metrics for {room_name} saved to {filename}")
+    return filename
