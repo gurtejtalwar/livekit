@@ -16,6 +16,7 @@ from groq import AsyncGroq
 from optimum.onnxruntime import ORTModelForFeatureExtraction
 from transformers import AutoTokenizer
 import torch
+import httpx
 
 from livekit.agents import (
     Agent,
@@ -76,6 +77,9 @@ from functools import lru_cache
 load_dotenv(override=True)
 GROQ_API_KEY = os.getenv("GROQ_API_KEY")
 client = AsyncGroq(api_key=GROQ_API_KEY)
+VLLM_BASE_URL = os.getenv("VLLM_BASE_URL", "http://localhost:7880")
+VLLM_MODEL = "Qwen/Qwen2.5-3B-Instruct"
+
 # ---------------------- TIMER UTILITY ----------------------
 class Timer:
     def __init__(self, name):
@@ -187,30 +191,45 @@ class InboundAgent(Agent):
         ]
 
         # --- 2. Streaming completion ---
-        stream = await client.chat.completions.create(
-            model="qwen/qwen3-32b",
-            messages=messages,
-            temperature=0.3,
-            max_completion_tokens=100,
-            stream=True,
-            reasoning_effort="none",
-        )
+        payload = {
+            "model": VLLM_MODEL,
+            "messages": messages,
+            "temperature": 0.3,
+            "max_tokens": 100,
+            "stream": True,
+        }
 
-        async for chunk in stream:
-            if not chunk.choices:
-                continue
+        async with httpx.AsyncClient(timeout=None) as client:
+            async with client.stream(
+                "POST",
+                f"{VLLM_BASE_URL}/v1/chat/completions",
+                json=payload,
+            ) as response:
 
-            delta = chunk.choices[0].delta
-            if not delta or not delta.content:
-                continue
-            if delta.content.startswith("<think>"):
-                continue
-            yield llm.ChatChunk(
-                id="assistant-stream",
-                delta=llm.ChoiceDelta(role=delta.role,
-                                      content=delta.content,
-                                      tool_calls=[delta.tool_calls] if delta.tool_calls else []),
-            )
+                async for line in response.aiter_lines():
+                    if not line or not line.startswith("data:"):
+                        continue
+
+                    data = line[len("data:"):].strip()
+                    if data == "[DONE]":
+                        break
+
+                    try:
+                        chunk = json.loads(data)
+                    except Exception:
+                        continue
+
+                    delta = chunk["choices"][0].get("delta", {})
+                    content = delta.get("content")
+                    if not content:
+                        continue
+
+                    yield llm.ChatChunk(
+                        id="assistant-stream",
+                        delta=llm.ChoiceDelta(role="assistant",
+                                            content=delta.get("content", ""),
+                                            tool_calls=[]),
+                    )
 async def inbound_entrypoint(ctx: JobContext):
     # Prewarm in parallel with connection
     # prewarm_task = asyncio.create_task(prewarm())
