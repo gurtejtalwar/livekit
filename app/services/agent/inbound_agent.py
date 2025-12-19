@@ -132,6 +132,7 @@ class InboundAgent(Agent):
                 "Format numbers naturally (e.g., 'five hundred and twelve gigabytes')." \
                 # "Please return the text with formatted emotion type before sentence to indicate the TTS model on which emotion to synthesie the speed with, for eg, [enthusiastically] Hello, how are you."
             ),
+            # stt=deepgram.STT(),
             stt=assemblyai.STT(),
             # stt=assemblyai.STT(model="universal-streaming-multilingual"),
             # llm=openai.LLM(model="gpt-4o-mini", tool_choice="auto", max_completion_tokens=50),
@@ -145,59 +146,15 @@ class InboundAgent(Agent):
                 speed=1.0,
                 volume=2
             ),
-            # vad=silero.VAD.load(min_speech_duration=0.2,
-            #                     min_silence_duration=0.3),
-            # turn_detection=EnglishModel(),
-            # preemptive_generation=True,
+            turn_detection=EnglishModel(),
+            preemptive_generation=True,
             tools=[get_current_time, ask_knowledge_base],
-            min_endpointing_delay=0.1,  # Minimum wait after silence
-            max_endpointing_delay=0.5,  # Maximum wait before forcing turn end
+            min_endpointing_delay=0.05,  # Minimum wait after silence
+            max_endpointing_delay=0.3,  # Maximum wait before forcing turn end
             allow_interruptions=True,
             use_tts_aligned_transcript=False
         )
-    # async def llm_node(
-    #     self,
-    #     chat_ctx: llm.ChatContext,
-    #     tools: list[llm.FunctionTool],
-    #     model_settings: ModelSettings,
-    # ) -> AsyncIterable[llm.ChatChunk]:
-    #     """
-    #     Custom LLM node using Groq streaming (Qwen 2.5 32B)
-    #     """
 
-    #     client = AsyncGroq(api_key=GROQ_API_KEY)
-
-    #     # --- 1. Convert ChatContext → OpenAI-style messages ---
-    #     messages = [
-    #         {
-    #             "role": msg.role,
-    #             "content": content_to_string(msg.content),
-    #         }
-    #         for msg in chat_ctx.items
-    #     ]
-
-    #     # --- 2. Streaming completion ---
-    #     stream = await client.chat.completions.create(
-    #         model="qwen/qwen3-32b",
-    #         messages=messages,
-    #         temperature=0.3,
-    #         max_completion_tokens=100,
-    #         stream=True,
-    #     )
-
-    #     async for chunk in stream:
-    #         if not chunk.choices:
-    #             continue
-
-    #         delta = chunk.choices[0].delta
-    #         if not delta or not delta.content:
-    #             continue
-
-    #         yield llm.ChatChunk(
-    #             id="assistant-stream",
-    #             role="assistant",
-    #             content=delta.content,
-    #         )
 async def inbound_entrypoint(ctx: JobContext):
     # Prewarm in parallel with connection
     # prewarm_task = asyncio.create_task(prewarm())
