@@ -132,22 +132,21 @@ class InboundAgent(Agent):
                 "Format numbers naturally (e.g., 'five hundred and twelve gigabytes')." \
                 # "Please return the text with formatted emotion type before sentence to indicate the TTS model on which emotion to synthesie the speed with, for eg, [enthusiastically] Hello, how are you."
             ),
-            # stt=deepgram.STT(),
-            stt=assemblyai.STT(),
+            stt=deepgram.STT(),
+            # stt=assemblyai.STT(),
             # stt=assemblyai.STT(model="universal-streaming-multilingual"),
             # llm=openai.LLM(model="gpt-4o-mini", tool_choice="auto", max_completion_tokens=50),
             llm=groq.LLM(model="qwen/qwen3-32b", tool_choice="auto", max_completion_tokens=100),
             # tts=elevenlabs.TTS(),#model="eleven_v3",voice_id="EkK5I93UQWFDigLMpZcX"),
             tts=cartesia.TTS
             (
-                model="sonic-3",
+                model="sonic-turbo",
                 voice="6ccbfb76-1fc6-48f7-b71d-91ac6298247b",
                 emotion="Happy",
                 speed=1.0,
                 volume=2
             ),
             turn_detection=EnglishModel(),
-            preemptive_generation=True,
             tools=[get_current_time, ask_knowledge_base],
             min_endpointing_delay=0.05,  # Minimum wait after silence
             max_endpointing_delay=0.3,  # Maximum wait before forcing turn end
@@ -162,7 +161,9 @@ async def inbound_entrypoint(ctx: JobContext):
     # await prewarm_task  # Ensure prewarm completes
     
     agent = InboundAgent()
-    session = AgentSession()
+    session = AgentSession(
+        preemptive_generation=True
+    )
 
     await session.start(
         room=ctx.room,
