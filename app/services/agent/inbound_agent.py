@@ -8,13 +8,12 @@ from contextlib import contextmanager
 import faiss
 import pickle
 from groq import AsyncGroq
-from optimum.onnxruntime import ORTModelForFeatureExtraction
-from transformers import AutoTokenizer
-import torch
+
 
 from livekit.agents import (
     Agent,
     AgentSession,
+    AgentServer,
     AutoSubscribe,
     JobContext,
     RunContext,
@@ -37,7 +36,7 @@ from livekit.agents.voice.agent import ModelSettings
 from livekit.plugins.turn_detector.multilingual import MultilingualModel
 from livekit.plugins.turn_detector.english import EnglishModel
 
-from app.services.agent.cache import semantic_context_cache
+from app.utils.timer import Timer
 
 logger = logging.getLogger("inbound-agent")
 for noisy_logger in ["pymongo", "pymongo.topology", "pymongo.connection"]:
@@ -46,75 +45,17 @@ for noisy_logger in ["pymongo", "pymongo.topology", "pymongo.connection"]:
 from collections import OrderedDict
 from typing import Optional
 
-@function_tool
-async def get_current_time(input: str) -> str:
-    """Get the current time."""
-    from datetime import datetime
-    return f"The current time is {datetime.now().strftime('%I:%M %p')}" 
 
-###### Pinecone Vector DB Loader ######
 from pathlib import Path
 from dotenv import load_dotenv
 import os
 from functools import lru_cache
 
 load_dotenv(override=True)
-GROQ_API_KEY = os.getenv("GROQ_API_KEY")
-# ---------------------- TIMER UTILITY ----------------------
-class Timer:
-    def __init__(self, name):
-        self.name = name
 
-    def __enter__(self):
-        self.start = time.perf_counter()
-        return self
-
-    def __exit__(self, *exc):
-        dur = time.perf_counter() - self.start
-        print(f"\nTIMER: {self.name} took {dur:.4f} seconds")
-
-# ---------------------- GLOBAL SETUP ----------------------
-
-with Timer("Load Index, Tokenizer and Embedding Model"):
-    index = faiss.read_index("dev_scripts/faiss.index")
-    tokenizer = AutoTokenizer.from_pretrained("sentence-transformers/all-MiniLM-L6-v2")
-    model = ORTModelForFeatureExtraction.from_pretrained(
-        "sentence-transformers/all-MiniLM-L6-v2",
-        export=True
-    )
-
-def embed(text):
-        inputs = tokenizer(text, return_tensors="pt", padding=True, truncation=True)
-        with torch.no_grad():
-            outputs = model(**inputs)
-        return outputs.last_hidden_state.mean(dim=1).numpy()
-
-with open("dev_scripts/chunks.pkl", "rb") as f:
-    chunks = pickle.load(f)
-    
-def get_text_from_indices(indices):
-    """Return the text chunks for each FAISS result index."""
-    result = []
-    for idx in indices:
-        if 0 <= idx < len(chunks):
-            result.append(chunks[idx])
-        else:
-            result.append("[INVALID INDEX]")
-    return result
+agent_server = AgentServer()
 
 # ---------------------- MAIN PIPELINE ----------------------
-@llm.function_tool
-async def ask_knowledge_base(question: str):
-    """Ultra-fast retrieval with streaming context"""
-    with Timer("KB Tool Total:"):
-        with Timer("Embed Query"):
-            q_emb = embed(question)
-        with Timer("FAISS Search"):
-            dist, idx = index.search(q_emb, k=3)    # top 3 matches
-        indices = idx[0]                        # array of indices
-        matched_text = get_text_from_indices(indices)
-        context = "\n".join(matched_text)
-        return context
 
 ###### Inbound RAG Agent ######
 class InboundAgent(Agent):
@@ -154,16 +95,20 @@ class InboundAgent(Agent):
             use_tts_aligned_transcript=False
         )
 
+from app.services.agent.factory import AgentFactory, load_agent_config
+
+@agent_server.rtc_session(agent_name="inbound-agent")
 async def inbound_entrypoint(ctx: JobContext):
-    # Prewarm in parallel with connection
-    # prewarm_task = asyncio.create_task(prewarm())
     await ctx.connect(auto_subscribe=AutoSubscribe.AUDIO_ONLY)
-    # await prewarm_task  # Ensure prewarm completes
-    
-    agent = InboundAgent()
-    session = AgentSession(
-        preemptive_generation=True
-    )
+
+    # Example: resolve from headers / room metadata / API
+    # customer_id = ctx.job.metadata.get("customer_id")
+    # agent_id = ctx.job.metadata.get("agent_id")
+
+    agent_config = await load_agent_config("some-customer-id","some-agent-id")
+    agent = AgentFactory.create_agent(agent_config)
+
+    session = AgentSession(preemptive_generation=True)
 
     await session.start(
         room=ctx.room,
@@ -173,18 +118,8 @@ async def inbound_entrypoint(ctx: JobContext):
             close_on_disconnect=True,
         ),
     )
-    usage_collector = metrics.UsageCollector()
 
-    @session.on("metrics_collected")
-    def _on_metrics_collected(ev: MetricsCollectedEvent):
-        metrics.log_metrics(ev.metrics)
-
-    async def log_usage():
-        summary = usage_collector.get_summary()
-        logger.info(f"Usage: {summary}")
-
-    ctx.add_shutdown_callback(log_usage)
-    await session.say("Thanks for calling Eminence Technology customer support. My name is Lala, let me know how I can assist you")
+    await session.say(agent_config.greeting)
 
 def content_to_string(content):
     if isinstance(content, str):
