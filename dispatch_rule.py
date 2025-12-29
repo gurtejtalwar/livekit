@@ -16,11 +16,11 @@ async def run():
         dispatch_rule = api.SIPDispatchRuleInfo(
             rule = rule,
             name = 'Inbound Dispatch Rule',
-            trunk_ids = ["ST_NdWz5EhNfSEA"],
+            trunk_ids = ["ST_YuduAaiqKQuF"],
             room_config=api.RoomConfiguration(
                 agents=[api.RoomAgentDispatch(
                     agent_name="inbound-agent",
-                    metadata="job dispatch metadata",
+                    metadata="gt's user id",
                 )]
             )
         )

@@ -1,5 +1,6 @@
+.env*
+.python*
+.vscode/*
 .venv/
-.env
-.vscode/
 dev_scripts/
 __pycache__/

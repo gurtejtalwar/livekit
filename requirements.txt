@@ -11,3 +11,5 @@ llama-index-llms-openai
 pinecone
 pymongo
 motor
+fastapi>=0.100.0
+uvicorn[standard]>=0.23.0
