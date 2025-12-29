@@ -1,7 +1,7 @@
 import httpx
 
-API_BASE = "http://localhost:3001"
-AGENT_SECRET = "YOUR_AGENT_SECRET"
+API_BASE = "https://2831d7c36859.ngrok-free.app"
+AGENT_SECRET = "kndsalfn221lfsa204ncodsa023459"
 
 async def _request(method: str, url: str, *, params=None, json=None):
     headers = {

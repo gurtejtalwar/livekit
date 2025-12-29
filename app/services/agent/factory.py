@@ -48,12 +48,30 @@ class AgentConfig:
 
     greeting: str = "Hello! How can I assist you today?"
 
+prompt ="""
+                "You are a Eminence Technology customer service AI assistant. "
+                "For ANY Eminence Technology-related or factual question, you MUST use the 'ask_knowledge_base' tool FIRST. "
+                "Do not rely on your internal memory. "
+                "For ANY appointment booking related information/actions you have access to the following tools: 
+                book_appointment: Use this tool to book new appointments for customers., 
+                cancel_appointment: Use this tool to cancel existing appointments for customers., 
+                get_available_slots: Use this tool to check available appointment slots., 
+                reschedule_appointment: Use this tool to reschedule existing appointments for customers."
+
+                "After receiving the tool's output, use it to construct a conversational, human-like answer. "
+                "If the tool returns no relevant data, politely say you don't have enough information. "
+                "Keep responses concise and optimized for spoken delivery. PLEASE MAKE SURE THAT THE RESPONSES ARE SHORT SO THAT IT MIMICKS A PHONE CONVERSATION BETWEEN HUMANS. "
+                "Do not respond with asterick, bullet points,etc  please respond how you would in a normal conversation with a human. "
+                "PLEASE keep your tone friendly and enthusiastic. Always Respond politely to the customer. You are allowed to do small talks with the customer BUT DO NOT STRAY AWAY FROM THE BUSINESS AND OBJECTIVE OF THE CONVERSATION"
+                "Format numbers naturally (e.g., 'five hundred and twelve gigabytes')." 
+"""
+
 async def load_agent_config(customer_id: str, agent_id: str) -> AgentConfig:
     # TODO
     #  return hardcoded config
     return AgentConfig(
         agent_id=agent_id,
-        system_prompt="You are a helpful customer support agent.",
+        system_prompt=prompt,
         llm_provider="groq",
         llm_model="openai/gpt-oss-20b",
         max_tokens=100,
@@ -63,7 +81,9 @@ async def load_agent_config(customer_id: str, agent_id: str) -> AgentConfig:
         speed=1.0,
         volume=2.0,
         stt_provider="deepgram",
-        tools=["ask_knowledge_base", "get_current_time"],
+        tools=["ask_knowledge_base", "get_current_time", 
+               "book_appointment", "cancel_appointment", 
+               "get_available_slots", "reschedule_appointment"],
         allow_interruptions=True,
         greeting="Hello! How can I assist you today?"
     )
@@ -72,12 +92,14 @@ class AgentFactory:
     @staticmethod
     def create_agent(config: AgentConfig) -> Agent:
         # ----- STT -----
+        #TODO need class methods
         if config.stt_provider == "deepgram":
             stt = deepgram.STT()
         else:
             raise ValueError("Unsupported STT")
 
         # ----- LLM -----
+        #TODO need class methods
         if config.llm_provider == "groq":
             llm = groq.LLM(
                 model=config.llm_model,
@@ -88,6 +110,7 @@ class AgentFactory:
             raise ValueError("Unsupported LLM")
 
         # ----- TTS -----
+        #TODO need class methods
         if config.tts_provider == "cartesia":
             tts = cartesia.TTS(
                 model="sonic-turbo",

@@ -1,7 +1,13 @@
+from typing import Optional, Dict, List
+from pydantic import BaseModel
+
 from livekit.agents import llm
 
 from app.utils.tools import _request
 
+class CustomField(BaseModel):
+    key: str
+    value: str
 
 #/ -- Book Appointment Tool --/
 @llm.function_tool
@@ -10,7 +16,7 @@ async def book_appointment(
     date: str,
     time: str,
     agentId: str,
-    customFields: dict | None = None
+    customFields: Optional[List[CustomField]] = None
 ):
     """
     Book a new appointment for a user.
@@ -19,7 +25,7 @@ async def book_appointment(
         "name": name,
         "date": date,
         "time": time,
-        "agentId": agentId,
+        "agentId": "695254c6414ceece8c926513",
         "customFields": customFields or {}
     }
 
@@ -51,15 +57,17 @@ async def get_available_slots(
     """
     Get available appointment slots for a given agent and date.
     """
-    return await _request(
+    result = await _request(
         "GET",
         "/available-slot",
         params={
-            "agentId": agentId,
+            # "agentId": agentId,
             "date": date,
             "status": status
         }
     )
+    print("Available slots result:\n", result)
+    return result
 
 #/ -- Reschedule Appointment Tool --/
 @llm.function_tool
@@ -69,7 +77,7 @@ async def reschedule_appointment(
     date: str,
     time: str,
     agentId: str,
-    customFields: dict | None = None
+    # customFields: dict | None = None
 ):
     """
     Reschedule an existing appointment.
@@ -80,7 +88,7 @@ async def reschedule_appointment(
         "date": date,
         "time": time,
         "agentId": agentId,
-        "customFields": customFields or {}
+        # "customFields": customFields or {}
     }
 
     return await _request(
