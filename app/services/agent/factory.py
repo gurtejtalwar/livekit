@@ -5,7 +5,8 @@ from livekit.agents import Agent
 from livekit.plugins import deepgram, cartesia, groq
 from livekit.plugins.turn_detector.english import EnglishModel
 
-from app.services.agent.tools import TOOL_REGISTRY
+from app.services.agent.prompt import inbound as inbound_prompt
+from app.services.agent.tools import load_knowledge_base, make_ask_knowledge_base_tool, TOOL_REGISTRY
 from app.database.db import db
 
 class STTProvider:
@@ -71,7 +72,7 @@ async def load_agent_config(customer_id: str, agent_id: str) -> AgentConfig:
     #  return hardcoded config
     return AgentConfig(
         agent_id=agent_id,
-        system_prompt=prompt,
+        system_prompt=inbound_prompt.f_prompt,
         llm_provider="groq",
         llm_model="openai/gpt-oss-20b",
         max_tokens=100,
@@ -91,6 +92,9 @@ async def load_agent_config(customer_id: str, agent_id: str) -> AgentConfig:
 class AgentFactory:
     @staticmethod
     def create_agent(config: AgentConfig) -> Agent:
+        # kb = load_knowledge_base(config.agent_id)
+        # ask_kb_tool = make_ask_knowledge_base_tool(kb)
+
         # ----- STT -----
         #TODO need class methods
         if config.stt_provider == "deepgram":
@@ -126,7 +130,7 @@ class AgentFactory:
         tools = [TOOL_REGISTRY[name] for name in config.tools]
 
         return Agent(
-            instructions=config.system_prompt,
+            instructions=inbound_prompt.f_prompt,
             stt=stt,
             llm=llm,
             tts=tts,
