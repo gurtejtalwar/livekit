@@ -9,6 +9,50 @@ from livekit.agents import llm
 
 from app.utils.timer import Timer
 
+class KnowledgeBase:
+    def __init__(self, index, chunks):
+        self.index = index
+        self.chunks = chunks
+
+    def search(self, query_emb, k=3):
+        dist, idx = self.index.search(query_emb, k)
+        indices = idx[0]
+        return [
+            self.chunks[i] if 0 <= i < len(self.chunks) else "[INVALID INDEX]"
+            for i in indices
+        ]
+
+KB_CACHE = {} #TODO HAZARD use redis
+
+#TODO Use resource centre id instead of agent id
+def load_knowledge_base(resource_centre_id: str) -> KnowledgeBase: 
+    if resource_centre_id in KB_CACHE:
+        return KB_CACHE[resource_centre_id]
+
+    with Timer(f"Load KB for {resource_centre_id}"):
+        index = faiss.read_index(f"kbs/{resource_centre_id}/faiss.index")
+        with open(f"kbs/{resource_centre_id}/chunks.pkl", "rb") as f:
+            chunks = pickle.load(f)
+
+    kb = KnowledgeBase(index=index, chunks=chunks)
+    KB_CACHE[resource_centre_id] = kb
+    return kb
+
+def make_ask_knowledge_base_tool(kb: KnowledgeBase):
+
+    @llm.function_tool
+    async def ask_knowledge_base(question: str):
+        with Timer("KB Tool Total"):
+            with Timer("Embed Query"):
+                q_emb = embed(question)
+
+            with Timer("FAISS Search"):
+                results = kb.search(q_emb, k=3)
+
+            return "\n".join(results)
+
+    return ask_knowledge_base
+
 #TODO Pre call tasks
 with open("dev_scripts/chunks.pkl", "rb") as f:
     chunks = pickle.load(f)

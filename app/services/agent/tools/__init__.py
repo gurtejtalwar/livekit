@@ -1,4 +1,4 @@
-from .kb import get_current_time, ask_knowledge_base
+from .kb import load_knowledge_base, make_ask_knowledge_base_tool, get_current_time, ask_knowledge_base
 from .appointments import book_appointment, cancel_appointment, get_available_slots, reschedule_appointment
 
 TOOL_REGISTRY = {
@@ -9,3 +9,4 @@ TOOL_REGISTRY = {
     "get_available_slots": get_available_slots,
     "reschedule_appointment": reschedule_appointment,
 }
+
