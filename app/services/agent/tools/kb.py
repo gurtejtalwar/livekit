@@ -5,7 +5,8 @@ import torch
 from optimum.onnxruntime import ORTModelForFeatureExtraction
 from transformers import AutoTokenizer
 
-from livekit.agents import llm
+from livekit import api
+from livekit.agents import llm, get_job_context, RunContext
 
 from app.utils.timer import Timer
 
@@ -101,4 +102,24 @@ async def get_current_time(input: str) -> str:
     from datetime import datetime
     return f"The current time is {datetime.now().strftime('%I:%M %p')}" 
 
+async def hangup_call(ctx: RunContext):
+    # Ensure any pending agent speech is finished before killing the room
+    await ctx.wait_for_playout()
+    await api.room.delete_room(
+        api.DeleteRoomRequest(room=ctx.room.name)
+    )
 
+
+@llm.function_tool
+async def end_call(ctx: RunContext,
+                   dummy: str = ""):
+    """Use this tool when the user has signaled they wish to end the current call."""
+    session = ctx.session
+    session.generate_reply(instructions="You/User have chosen to end the call.")
+    await ctx.wait_for_playout() # Ensure agent finishes speaking
+    job_ctx = get_job_context()
+    if job_ctx:
+        # Use job_ctx.api to delete the room
+        await job_ctx.api.room.delete_room(
+            api.DeleteRoomRequest(room=job_ctx.room.name)
+        )
