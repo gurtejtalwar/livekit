@@ -1,3 +1,4 @@
+import logging
 from dataclasses import dataclass, field
 from typing import List, Optional
 
@@ -8,6 +9,8 @@ from livekit.plugins.turn_detector.english import EnglishModel
 from app.services.agent.prompt import inbound as inbound_prompt
 from app.services.agent.tools import load_knowledge_base, make_ask_knowledge_base_tool, TOOL_REGISTRY
 from app.database.db import db
+
+logger = logging.getLogger("factory")
 
 class STTProvider:
     DEEPGRAM = "deepgram"
@@ -49,45 +52,75 @@ class AgentConfig:
 
     greeting: str = "Hello! How can I assist you today?"
 
-prompt ="""
-                "You are a Eminence Technology customer service AI assistant. "
-                "For ANY Eminence Technology-related or factual question, you MUST use the 'ask_knowledge_base' tool FIRST. "
-                "Do not rely on your internal memory. "
-                "For ANY appointment booking related information/actions you have access to the following tools: 
-                book_appointment: Use this tool to book new appointments for customers., 
-                cancel_appointment: Use this tool to cancel existing appointments for customers., 
-                get_available_slots: Use this tool to check available appointment slots., 
-                reschedule_appointment: Use this tool to reschedule existing appointments for customers."
-
-                "After receiving the tool's output, use it to construct a conversational, human-like answer. "
-                "If the tool returns no relevant data, politely say you don't have enough information. "
-                "Keep responses concise and optimized for spoken delivery. PLEASE MAKE SURE THAT THE RESPONSES ARE SHORT SO THAT IT MIMICKS A PHONE CONVERSATION BETWEEN HUMANS. "
-                "Do not respond with asterick, bullet points,etc  please respond how you would in a normal conversation with a human. "
-                "PLEASE keep your tone friendly and enthusiastic. Always Respond politely to the customer. You are allowed to do small talks with the customer BUT DO NOT STRAY AWAY FROM THE BUSINESS AND OBJECTIVE OF THE CONVERSATION"
-                "Format numbers naturally (e.g., 'five hundred and twelve gigabytes')." 
-"""
-
-async def load_agent_config(customer_id: str, agent_id: str) -> AgentConfig:
+async def load_agent_config(user_data, agent_id: str) -> AgentConfig:
     # TODO
     #  return hardcoded config
     return AgentConfig(
         agent_id=agent_id,
-        system_prompt=inbound_prompt.f_prompt,
+        system_prompt=inbound_prompt.f_prompt+f"\nUser Data: Name: {user_data.name}, Email: {user_data.email}, Phone: {user_data.phone}\n",
         llm_provider="groq",
         llm_model="openai/gpt-oss-20b",
         max_tokens=1000,
         tts_provider="cartesia",
         voice_id="6ccbfb76-1fc6-48f7-b71d-91ac6298247b",
-        emotion="Happy",
-        speed=1.0,
+        emotion="Determined",
+        speed=1.25,
         volume=2.0,
         stt_provider="deepgram",
-        tools=["end_call", "ask_knowledge_base", "get_current_time", 
+        tools=["end_call", "ask_knowledge_base", 
+               "get_current_time", "transfer_to_human",
                "book_appointment", "cancel_appointment", 
                "get_available_slots", "reschedule_appointment"],
         allow_interruptions=True,
         greeting="Hello! How can I assist you today?"
     )
+
+class InboundAgent(Agent):
+    def __init__(self, config: AgentConfig):
+        super().__init__(
+            instructions=config.system_prompt,
+            stt=deepgram.STT(),
+            llm=groq.LLM(
+                model=config.llm_model,
+                tool_choice="auto",
+                max_completion_tokens=config.max_tokens,
+            ),
+            tts=cartesia.TTS(
+                model="sonic-turbo",
+                voice=config.voice_id,
+                emotion=config.emotion,
+                speed=config.speed,
+                volume=config.volume,
+            ),
+            turn_detection=EnglishModel(),
+            tools=[TOOL_REGISTRY[name] for name in config.tools],
+            allow_interruptions=config.allow_interruptions,
+            min_endpointing_delay=0.05,
+            max_endpointing_delay=0.3,
+        )
+    def on_enter(self):
+        logger.info("Node: on_enter called")
+    
+    def stt_node(self,
+                 audio,
+                 model_settings):
+        logger.info("Node: stt_node called")
+        return self.default.stt_node(self, audio, model_settings)
+
+
+    def llm_node(self, chat_ctx, tools, model_settings):
+        logger.info("Node: llm_node called")
+        return self.default.llm_node(self, chat_ctx, tools, model_settings)
+    
+    def trancription_node(self, text, model_settings):
+        logger.info("Node: transcription_node called")
+        return self.default.transcription_node(self, text, model_settings)
+          
+    def tts_node(self,
+                 text,
+                 model_settings):
+        logger.info("Node: tts_node called")
+        return self.default.tts_node(self, text, model_settings)
 
 class AgentFactory:
     @staticmethod
@@ -129,17 +162,18 @@ class AgentFactory:
         # ----- Tools -----
         tools = [TOOL_REGISTRY[name] for name in config.tools]
 
-        return Agent(
-            instructions=inbound_prompt.f_prompt,
-            stt=stt,
-            llm=llm,
-            tts=tts,
-            tools=tools,
-            allow_interruptions=config.allow_interruptions,
-            turn_detection=EnglishModel(),
-            min_endpointing_delay=0.05,
-            max_endpointing_delay=0.3,
-        )
+        return InboundAgent(config)
+        # return Agent(
+        #     instructions=inbound_prompt.f_prompt,
+        #     stt=stt,
+        #     llm=llm,
+        #     tts=tts,
+        #     tools=tools,
+        #     allow_interruptions=config.allow_interruptions,
+        #     turn_detection=EnglishModel(),
+        #     min_endpointing_delay=0.05,
+        #     max_endpointing_delay=0.3,
+        # )
 
 from bson import ObjectId
 from fastapi import HTTPException
