@@ -3,11 +3,11 @@ from dataclasses import dataclass, field
 from typing import List, Optional
 
 from livekit.agents import Agent
-from livekit.plugins import deepgram, cartesia, groq
+from livekit.plugins import deepgram, cartesia, groq, openai
 from livekit.plugins.turn_detector.english import EnglishModel
 
 from app.services.agent.prompt import inbound as inbound_prompt
-from app.services.agent.tools import load_knowledge_base, make_ask_knowledge_base_tool, TOOL_REGISTRY
+from app.services.agent.tools import TOOL_REGISTRY
 from app.database.db import db
 
 logger = logging.getLogger("factory")
@@ -62,9 +62,9 @@ async def load_agent_config(user_data, agent_id: str) -> AgentConfig:
         llm_model="openai/gpt-oss-20b",
         max_tokens=1000,
         tts_provider="cartesia",
-        voice_id="6ccbfb76-1fc6-48f7-b71d-91ac6298247b",
+        voice_id="820a3788-2b37-4d21-847a-b65d8a68c99a",#"b0aa4612-81d2-4df3-9730-3fc064754b1f",#"6ccbfb76-1fc6-48f7-b71d-91ac6298247b",
         emotion="Determined",
-        speed=1.25,
+        speed=1,
         volume=2.0,
         stt_provider="deepgram",
         tools=["end_call", "ask_knowledge_base", 
@@ -80,11 +80,16 @@ class InboundAgent(Agent):
         super().__init__(
             instructions=config.system_prompt,
             stt=deepgram.STT(),
-            llm=groq.LLM(
-                model=config.llm_model,
-                tool_choice="auto",
+            llm=openai.LLM(
+                model="gpt-5-mini",
                 max_completion_tokens=config.max_tokens,
+                tool_choice="auto",
             ),
+            # groq.LLM(
+            #     model=config.llm_model,
+            #     tool_choice="auto",
+            #     max_completion_tokens=config.max_tokens,
+            # ),
             tts=cartesia.TTS(
                 model="sonic-turbo",
                 voice=config.voice_id,
@@ -96,7 +101,7 @@ class InboundAgent(Agent):
             tools=[TOOL_REGISTRY[name] for name in config.tools],
             allow_interruptions=config.allow_interruptions,
             min_endpointing_delay=0.05,
-            max_endpointing_delay=0.3,
+            max_endpointing_delay=0.6,
         )
     def on_enter(self):
         logger.info("Node: on_enter called")
