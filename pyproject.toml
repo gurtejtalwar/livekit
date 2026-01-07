@@ -3,14 +3,14 @@ name = "livekit-test"
 version = "0.1.0"
 description = "Add your description here"
 readme = "README.md"
-requires-python = ">=3.12"
+requires-python = ">=3.10"
 dependencies = [
     "beautifulsoup4>=4.14.3",
     "faiss-cpu>=1.13.1",
     "groq>=0.37.1",
     "langchain-openai>=1.1.2",
     "langchain-pinecone>=0.2.13",
-    "livekit==1.0.19",
+    "livekit[inference]==1.0.19",
     "livekit-agents[assemblyai,cartesia,deepgram,elevenlabs,groq,openai,silero,turn-detector]~=1.2",
     "livekit-plugins-noise-cancellation~=0.2",
     "llama-index-core~=0.11.10",
