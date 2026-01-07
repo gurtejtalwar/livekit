@@ -7,7 +7,7 @@ from .tools import (
     get_available_slots,
     reschedule_appointment,
     transfer_to_human,
-    detected_answering_machine
+    detected_voicemail
 )
 
 TOOL_REGISTRY = {
