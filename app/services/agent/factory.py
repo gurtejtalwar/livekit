@@ -1,8 +1,12 @@
 import logging
+import asyncio
 from dataclasses import dataclass, field
 from typing import List, Optional
 
+
+
 from livekit.agents import Agent
+from livekit.agents.metrics import LLMMetrics
 from livekit.plugins import deepgram, cartesia, groq, openai
 from livekit.plugins.turn_detector.english import EnglishModel
 
@@ -62,12 +66,12 @@ async def load_agent_config(user_data, agent_id: str) -> AgentConfig:
         llm_model="openai/gpt-oss-20b",
         max_tokens=1000,
         tts_provider="cartesia",
-        voice_id="820a3788-2b37-4d21-847a-b65d8a68c99a",#"b0aa4612-81d2-4df3-9730-3fc064754b1f",#"6ccbfb76-1fc6-48f7-b71d-91ac6298247b",
-        emotion="Determined",
-        speed=1,
+        voice_id="820a3788-2b37-4d21-847a-b65d8a68c99a",#"b0aa4612-81d2-4df3-9730-3fc064754b1f",#"6ccbfb76-1fc6-48f7-b71d-91ac6298247b",#"820a3788-2b37-4d21-847a-b65d8a68c99a",#"b0aa4612-81d2-4df3-9730-3fc064754b1f",#"6ccbfb76-1fc6-48f7-b71d-91ac6298247b",
+        # emotion="Determined",
+        speed=0.75,
         volume=2.0,
         stt_provider="deepgram",
-        tools=["end_call", "ask_knowledge_base", 
+        tools=["end_call", #"ask_knowledge_base", TODO HAZARD
                "get_current_time", "transfer_to_human",
                "book_appointment", "cancel_appointment", 
                "get_available_slots", "reschedule_appointment"],
@@ -80,31 +84,38 @@ class InboundAgent(Agent):
         super().__init__(
             instructions=config.system_prompt,
             stt=deepgram.STT(),
-            llm=openai.LLM(
-                model="gpt-5-mini",
-                max_completion_tokens=config.max_tokens,
+            llm=groq.LLM(
+                model=config.llm_model,
                 tool_choice="auto",
+                max_completion_tokens=config.max_tokens,
             ),
-            # groq.LLM(
-            #     model=config.llm_model,
-            #     tool_choice="auto",
+            # openai.LLM(
+            #     model="gpt-4o-mini",
             #     max_completion_tokens=config.max_tokens,
             # ),
-            tts=cartesia.TTS(
-                model="sonic-turbo",
-                voice=config.voice_id,
-                emotion=config.emotion,
-                speed=config.speed,
-                volume=config.volume,
-            ),
+
+            tts=deepgram.TTS(),
+            # cartesia.TTS(
+            #     model="sonic-turbo",
+            #     voice=config.voice_id,
+            #     emotion=config.emotion,
+            #     speed=config.speed,
+            #     volume=config.volume,
+            # ),
             turn_detection=EnglishModel(),
             tools=[TOOL_REGISTRY[name] for name in config.tools],
             allow_interruptions=config.allow_interruptions,
             min_endpointing_delay=0.05,
             max_endpointing_delay=0.6,
         )
+
     def on_enter(self):
         logger.info("Node: on_enter called")
+        # def sync_wrapper(metrics: LLMMetrics):
+        #     asyncio.create_task(self.on_metrics_collected(metrics))
+
+        # self.session.llm.on("metrics_collected", sync_wrapper)
+        # self.session.generate_reply()
     
     def stt_node(self,
                  audio,
