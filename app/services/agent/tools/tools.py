@@ -65,47 +65,55 @@ logger = logging.getLogger("TOOLS")
 
 #     return ask_knowledge_base
 
-# #TODO Pre call tasks
-# with open("dev_scripts/chunks.pkl", "rb") as f:
-#     chunks = pickle.load(f)
+#TODO Pre call tasks
+with open("dev_scripts/chunks.pkl", "rb") as f:
+    chunks = pickle.load(f)
 
-# def embed(text):
-#         inputs = tokenizer(text, return_tensors="pt", padding=True, truncation=True)
-#         with torch.no_grad():
-#             outputs = model(**inputs)
-#         return outputs.last_hidden_state.mean(dim=1).numpy()
+def embed(text):
+        inputs = tokenizer(text, return_tensors="pt", padding=True, truncation=True)
+        with torch.no_grad():
+            outputs = model(**inputs)
+        return outputs.last_hidden_state.mean(dim=1).numpy()
 
-# def get_text_from_indices(indices):
-#     """Return the text chunks for each FAISS result index."""
-#     result = []
-#     for idx in indices:
-#         if 0 <= idx < len(chunks):
-#             result.append(chunks[idx])
-#         else:
-#             result.append("[INVALID INDEX]")
-#     return result
+def get_text_from_indices(indices):
+    """Return the text chunks for each FAISS result index."""
+    result = []
+    for idx in indices:
+        if 0 <= idx < len(chunks):
+            result.append(chunks[idx])
+        else:
+            result.append("[INVALID INDEX]")
+    return result
 
+#TODO Deficit
+KB_CACHE={}
+MODEL_CACHE={}
+kb = "test"
+model = "test"
+with Timer("Load Index, Tokenizer and Embedding Model"):
+    if kb in KB_CACHE:
+        index = faiss.read_index("dev_scripts/faiss.index")
+        KB_CACHE[kb]=True
 
-# with Timer("Load Index, Tokenizer and Embedding Model"):
-#     index = faiss.read_index("dev_scripts/faiss.index")
-#     tokenizer = AutoTokenizer.from_pretrained("sentence-transformers/all-MiniLM-L6-v2")
-#     model = ORTModelForFeatureExtraction.from_pretrained(
-#         "sentence-transformers/all-MiniLM-L6-v2",
-#         export=True
-#     )
+    if model in MODEL_CACHE:
+        tokenizer = AutoTokenizer.from_pretrained("sentence-transformers/all-MiniLM-L6-v2")
+        model = ORTModelForFeatureExtraction.from_pretrained(
+            "sentence-transformers/all-MiniLM-L6-v2",
+        )
+        MODEL_CACHE[model]=True
 
-# @llm.function_tool #TODO HAZARD
-# async def ask_knowledge_base(question: str):
-#     """Ultra-fast retrieval with streaming context"""
-#     with Timer("KB Tool Total:"):
-#         with Timer("Embed Query"):
-#             q_emb = embed(question)
-#         with Timer("FAISS Search"):
-#             dist, idx = index.search(q_emb, k=3)    # top 3 matches
-#         indices = idx[0]                        # array of indices
-#         matched_text = get_text_from_indices(indices)
-#         context = "\n".join(matched_text)
-#         return context
+@llm.function_tool #TODO HAZARD
+async def ask_knowledge_base(question: str):
+    """Ultra-fast retrieval with streaming context"""
+    with Timer("KB Tool Total:"):
+        with Timer("Embed Query"):
+            q_emb = embed(question)
+        with Timer("FAISS Search"):
+            dist, idx = index.search(q_emb, k=3)    # top 3 matches
+        indices = idx[0]                        # array of indices
+        matched_text = get_text_from_indices(indices)
+        context = "\n".join(matched_text)
+        return context
 
 @llm.function_tool
 async def get_current_time(input: str) -> str:

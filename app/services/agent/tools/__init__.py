@@ -1,6 +1,6 @@
 from .tools import (
     end_call,
-    # ask_knowledge_base,
+    ask_knowledge_base,
     get_current_time,
     book_appointment,
     cancel_appointment,
@@ -12,7 +12,7 @@ from .tools import (
 
 TOOL_REGISTRY = {
     "end_call": end_call,
-    # "ask_knowledge_base": ask_knowledge_base,
+    "ask_knowledge_base": ask_knowledge_base,
     "get_current_time": get_current_time,
     "book_appointment": book_appointment,
     "cancel_appointment": cancel_appointment,
