@@ -4,3 +4,4 @@
 .venv/
 dev_scripts/
 __pycache__/
+scripts/
