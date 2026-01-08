@@ -91,11 +91,11 @@ MODEL_CACHE={}
 kb = "test"
 model = "test"
 with Timer("Load Index, Tokenizer and Embedding Model"):
-    if kb in KB_CACHE:
+    if kb not in KB_CACHE:
         index = faiss.read_index("dev_scripts/faiss.index")
         KB_CACHE[kb]=True
 
-    if model in MODEL_CACHE:
+    if model not in MODEL_CACHE:
         tokenizer = AutoTokenizer.from_pretrained("sentence-transformers/all-MiniLM-L6-v2")
         model = ORTModelForFeatureExtraction.from_pretrained(
             "sentence-transformers/all-MiniLM-L6-v2",
