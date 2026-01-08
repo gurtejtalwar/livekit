@@ -16,7 +16,7 @@ from livekit.agents.beta.workflows import WarmTransferTask
 from livekit.agents import llm, get_job_context, RunContext
 
 from app.utils.timer import Timer
-from app.utils.tools import _request
+from app.services.agent.tools.utils import _request
 
 load_dotenv(override=True)
 logger = logging.getLogger("TOOLS")
