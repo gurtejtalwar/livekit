@@ -25,10 +25,12 @@ load_dotenv(dotenv_path=".env",override=True)
 
 # asyncio.run(main())
 
-async def run():
+async def main():
     lkapi = api.LiveKitAPI()
     try:
         trunks = api.ListSIPDispatchRuleRequest()
-        print(trunks)
+        print("Trunks: \n",trunks)
     finally:
         await lkapi.aclose()
+
+asyncio.run(main())
