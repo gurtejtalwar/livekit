@@ -16,7 +16,7 @@ class LLMProvider:
 @dataclass
 class AgentConfig:
     agent_id: str
-    knwoledge_base_id: str
+    knowledge_base_id: str
     # LLM
     system_prompt: str
     llm_provider: LLMProvider = LLMProvider.GROQ
