@@ -135,7 +135,7 @@ class AgentFactory:
         else:
             raise ValueError("Unsupported TTS")
 
-        tools = resolve_tools(config.agent_id)
+        tools = resolve_tools(config)
         #TODO move to InboundAgent
 
         return InboundAgent(config, tools)
