@@ -59,6 +59,9 @@ TOOL_REGISTRY = {
     "cancel_appointment": resolve_cancel_appointment,
     "get_available_slots": resolve_get_available_slots,
     "reschedule_appointment": resolve_reschedule_appointment,
+    "end_call": end_call,
+    "transfer_to_human": transfer_to_human,
+    "detected_voicemail": detected_voicemail,
 }
 
 def resolve_tools(config: AgentConfig) -> list:
