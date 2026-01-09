@@ -1,7 +1,6 @@
 import logging
 import asyncio
 from dataclasses import dataclass, field
-from typing import List, Optional
 
 
 
@@ -10,57 +9,19 @@ from livekit.agents.metrics import LLMMetrics
 from livekit.plugins import deepgram, cartesia, groq, openai
 from livekit.plugins.turn_detector.english import EnglishModel
 
+from app.services.agent import AgentConfig
 from app.services.agent.prompt import inbound as inbound_prompt
-from app.services.agent.tools import TOOL_REGISTRY
+from app.services.agent.tools import resolve_tools
 from app.database.db import db
 
 logger = logging.getLogger("factory")
-
-class STTProvider:
-    DEEPGRAM = "deepgram"
-    ASSEMBLYAI = "assemblyai"
-
-class TTSProvider:
-    CARTESIA = "cartesia"
-    ELEVENLABS = "elevenlabs"
-
-class LLMProvider:
-    GROQ = "groq"
-    OPENAI = "openai"
-
-@dataclass
-class AgentConfig:
-    agent_id: str
-
-    # LLM
-    system_prompt: str
-    llm_provider: LLMProvider = LLMProvider.GROQ
-    llm_model: str = "qwen/qwen3-32b"
-    max_tokens: int = 100
-
-    # Voice
-    tts_provider: TTSProvider = TTSProvider.CARTESIA
-    voice_id: str = None
-    emotion: Optional[str] = "Happy"
-    speed: float = 1.0
-    volume: float = 1.0
-
-    # STT
-    stt_provider: STTProvider = STTProvider.DEEPGRAM
-
-    # Tools
-    tools: List[str] = field(default_factory=list) # tool names, not functions
-
-    # Behavior
-    allow_interruptions: bool = True
-
-    greeting: str = "Hello! How can I assist you today?"
 
 async def load_agent_config(user_data, agent_id: str) -> AgentConfig:
     # TODO
     #  return hardcoded config
     return AgentConfig(
         agent_id=agent_id,
+        knowledge_base_id= "perceptyne" if agent_id == "perceptyne" else "eminence", #TODO
         system_prompt=inbound_prompt.f_prompt+f"\nUser Data: Name: {user_data.name}, Email: {user_data.email}, Phone: {user_data.phone}\n",
         llm_provider="groq",
         llm_model="openai/gpt-oss-20b",
@@ -80,7 +41,7 @@ async def load_agent_config(user_data, agent_id: str) -> AgentConfig:
     )
 
 class InboundAgent(Agent):
-    def __init__(self, config: AgentConfig):
+    def __init__(self, config: AgentConfig, tools: list):
         super().__init__(
             instructions=config.system_prompt,
             stt=deepgram.STT(),
@@ -103,7 +64,7 @@ class InboundAgent(Agent):
             #     volume=config.volume,
             # ),
             turn_detection=EnglishModel(),
-            tools=[TOOL_REGISTRY[name] for name in config.tools],
+            tools=tools,
             allow_interruptions=config.allow_interruptions,
             min_endpointing_delay=0.05,
             max_endpointing_delay=0.6,
@@ -140,10 +101,9 @@ class InboundAgent(Agent):
 
 class AgentFactory:
     @staticmethod
-    def create_agent(config: AgentConfig) -> Agent:
-        # kb = load_knowledge_base(config.agent_id)
-        # ask_kb_tool = make_ask_knowledge_base_tool(kb)
-
+        #TODO move to InboundAgent
+    def create_agent(config: AgentConfig) -> Agent: 
+        #TODO move to InboundAgent
         # ----- STT -----
         #TODO need class methods
         if config.stt_provider == "deepgram":
@@ -175,10 +135,10 @@ class AgentFactory:
         else:
             raise ValueError("Unsupported TTS")
 
-        # ----- Tools -----
-        tools = [TOOL_REGISTRY[name] for name in config.tools]
+        tools = resolve_tools(config.agent_id)
+        #TODO move to InboundAgent
 
-        return InboundAgent(config)
+        return InboundAgent(config, tools)
         # return Agent(
         #     instructions=inbound_prompt.f_prompt,
         #     stt=stt,

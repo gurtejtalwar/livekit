@@ -21,53 +21,59 @@ from app.services.agent.tools.utils import _request
 load_dotenv(override=True)
 logger = logging.getLogger("TOOLS")
 
-# class KnowledgeBase:
-#     def __init__(self, index, chunks):
-#         self.index = index
-#         self.chunks = chunks
+class KnowledgeBase:
+    def __init__(self, index, chunks):
+        self.index = index
+        self.chunks = chunks
 
-#     def search(self, query_emb, k=3):
-#         dist, idx = self.index.search(query_emb, k)
-#         indices = idx[0]
-#         return [
-#             self.chunks[i] if 0 <= i < len(self.chunks) else "[INVALID INDEX]"
-#             for i in indices
-#         ]
+    def search(self, query_emb, k=3):
+        dist, idx = self.index.search(query_emb, k)
+        indices = idx[0]
+        return [
+            self.chunks[i] if 0 <= i < len(self.chunks) else "[INVALID INDEX]"
+            for i in indices
+        ]
 
-# KB_CACHE = {} #TODO HAZARD use redis
+KB_CACHE = {} #TODO HAZARD use redis
 
-# #TODO Use resource centre id instead of agent id
-# def load_knowledge_base(resource_centre_id: str) -> KnowledgeBase: 
-#     if resource_centre_id in KB_CACHE:
-#         return KB_CACHE[resource_centre_id]
+#TODO Use resource centre id instead of agent id
+def load_knowledge_base(resource_centre_id: str) -> KnowledgeBase: 
+    if resource_centre_id in KB_CACHE:
+        return KB_CACHE[resource_centre_id]
 
-#     with Timer(f"Load KB for {resource_centre_id}"):
-#         index = faiss.read_index(f"kbs/{resource_centre_id}/faiss.index")
-#         with open(f"kbs/{resource_centre_id}/chunks.pkl", "rb") as f:
-#             chunks = pickle.load(f)
+    with Timer(f"Load KB for {resource_centre_id}"):
+        index = faiss.read_index(f"knowledge_base/{resource_centre_id}_faiss.index")
+        with open(f"knowledge_base/{resource_centre_id}_chunks.pkl", "rb") as f:
+            chunks = pickle.load(f)
 
-#     kb = KnowledgeBase(index=index, chunks=chunks)
-#     KB_CACHE[resource_centre_id] = kb
-#     return kb
+    kb = KnowledgeBase(index=index, chunks=chunks)
+    KB_CACHE[resource_centre_id] = kb
+    return kb
 
-# def make_ask_knowledge_base_tool(kb: KnowledgeBase):
+def make_ask_knowledge_base_tool(kb: KnowledgeBase):
 
-#     @llm.function_tool
-#     async def ask_knowledge_base(question: str):
-#         with Timer("KB Tool Total"):
-#             with Timer("Embed Query"):
-#                 q_emb = embed(question)
+    @llm.function_tool
+    async def ask_knowledge_base(question: str):
+        with Timer("KB Tool Total"):
+            with Timer("Embed Query"):
+                q_emb = embed(question)
 
-#             with Timer("FAISS Search"):
-#                 results = kb.search(q_emb, k=3)
+            with Timer("FAISS Search"):
+                results = kb.search(q_emb, k=3)
 
-#             return "\n".join(results)
+            return "\n".join(results)
 
-#     return ask_knowledge_base
+    return ask_knowledge_base
 
 #TODO Pre call tasks
-with open("dev_scripts/chunks.pkl", "rb") as f:
-    chunks = pickle.load(f)
+def get_faiss_index_and_chunks():
+    """Load FAISS index and text chunks from disk."""
+    with open("dev_scripts/chunks.pkl", "rb") as f:
+        chunks = pickle.load(f)
+    if kb not in KB_CACHE:
+        index = faiss.read_index("dev_scripts/faiss.index")
+        KB_CACHE[kb]=True
+    return index, chunks
 
 def embed(text):
         inputs = tokenizer(text, return_tensors="pt", padding=True, truncation=True)
@@ -90,10 +96,7 @@ KB_CACHE={}
 MODEL_CACHE={}
 kb = "test"
 model = "test"
-with Timer("Load Index, Tokenizer and Embedding Model"):
-    if kb not in KB_CACHE:
-        index = faiss.read_index("dev_scripts/faiss.index")
-        KB_CACHE[kb]=True
+with Timer("Load Embedding Model"):
 
     if model not in MODEL_CACHE:
         tokenizer = AutoTokenizer.from_pretrained("sentence-transformers/all-MiniLM-L6-v2")
