@@ -24,7 +24,7 @@ async def load_agent_config(user_data, agent_id: str) -> AgentConfig:
         knowledge_base_id= "perceptyne" if agent_id == "perceptyne" else "eminence", #TODO
         system_prompt=inbound_prompt.f_prompt+f"\nUser Data: Name: {user_data.name}, Email: {user_data.email}, Phone: {user_data.phone}\n",
         llm_provider="groq",
-        llm_model="openai/gpt-oss-20b",
+        llm_model="qwen/qwen3-32b",
         max_tokens=1000,
         tts_provider="cartesia",
         voice_id="820a3788-2b37-4d21-847a-b65d8a68c99a",#"b0aa4612-81d2-4df3-9730-3fc064754b1f",#"6ccbfb76-1fc6-48f7-b71d-91ac6298247b",#"820a3788-2b37-4d21-847a-b65d8a68c99a",#"b0aa4612-81d2-4df3-9730-3fc064754b1f",#"6ccbfb76-1fc6-48f7-b71d-91ac6298247b",
