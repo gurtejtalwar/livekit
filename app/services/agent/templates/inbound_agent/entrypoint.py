@@ -41,7 +41,7 @@ async def inbound_entrypoint(ctx: JobContext):
     # Example: resolve from headers / room metadata / API
     # customer_id = ctx.job.metadata.get("customer_id")
     # agent_id = ctx.job.metadata.get("agent_id")
-    agent_config = await load_agent_config(ud,"some-agent-id") #TODO HAZARD pass uer&agent ID
+    agent_config = await load_agent_config(ud,"1") #TODO HAZARD pass uer&agent ID
     session = AgentSession(preemptive_generation=True, 
                            userdata=ud,
                            user_away_timeout=10)
