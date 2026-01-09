@@ -46,7 +46,7 @@ class InboundAgent(Agent):
             instructions=config.system_prompt,
             stt=deepgram.STT(),
             llm=openai.LLM(
-                model="gpt-5-mini",
+                model="gpt-5.1",
                 max_completion_tokens=config.max_tokens,
             ),
             # groq.LLM(
