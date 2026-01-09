@@ -45,16 +45,15 @@ class InboundAgent(Agent):
         super().__init__(
             instructions=config.system_prompt,
             stt=deepgram.STT(),
-            llm=groq.LLM(
-                model=config.llm_model,
-                tool_choice="auto",
+            llm=openai.LLM(
+                model="gpt-5-mini",
                 max_completion_tokens=config.max_tokens,
             ),
-            # openai.LLM(
-            #     model="gpt-4o-mini",
+            # groq.LLM(
+            #     model=config.llm_model,
+            #     tool_choice="auto",
             #     max_completion_tokens=config.max_tokens,
             # ),
-
             tts=deepgram.TTS(),
             # cartesia.TTS(
             #     model="sonic-turbo",
