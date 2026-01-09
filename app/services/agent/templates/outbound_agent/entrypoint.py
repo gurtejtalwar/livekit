@@ -11,6 +11,7 @@ from typing import Any
 from livekit import rtc, api
 from livekit.agents import (
     AgentSession,
+    AgentServer,
     Agent,
     JobContext,
     function_tool,
@@ -29,6 +30,7 @@ from livekit.plugins import (
 )
 from livekit.plugins.turn_detector.english import EnglishModel
 
+outbound_server = AgentServer()
 
 # load environment variables, this is optional, only used for local development
 load_dotenv(dotenv_path=".env.local")
@@ -164,7 +166,8 @@ class OutboundCaller(Agent):
         await self.hangup()
 
 
-async def entrypoint(ctx: JobContext):
+@outbound_server.rtc_session(agent_name="outbound-agent")
+async def outbound_entrypoint(ctx: JobContext):
     logger.info(f"connecting to room {ctx.room.name}")
     await ctx.connect()
 
@@ -234,12 +237,3 @@ async def entrypoint(ctx: JobContext):
             f"{e.metadata.get('sip_status')}"
         )
         ctx.shutdown()
-
-
-if __name__ == "__main__":
-    cli.run_app(
-        WorkerOptions(
-            entrypoint_fnc=entrypoint,
-            agent_name="outbound-agent",
-        )
-    )

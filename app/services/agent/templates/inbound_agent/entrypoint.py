@@ -3,18 +3,19 @@ import logging
 
 from dataclasses import dataclass
 
-from app.server import agent_server
-
 from livekit.plugins import noise_cancellation
 from livekit.agents import (metrics,
                             JobContext,
                             AutoSubscribe,
+                            AgentServer,
                             AgentSession,
                             MetricsCollectedEvent,
                             RoomInputOptions)
 
 from app.services.agent import agent_metrics
 from app.services.agent.factory import AgentFactory, load_agent_config
+
+inbound_server = AgentServer()
 
 logger = logging.getLogger(__name__)
 
@@ -33,7 +34,7 @@ ud = UserData(
     phone="+917460015555"
 )
 
-@agent_server.rtc_session(agent_name="inbound-agent")
+@inbound_server.rtc_session(agent_name="inbound-agent")
 async def inbound_entrypoint(ctx: JobContext):
     await ctx.connect(auto_subscribe=AutoSubscribe.AUDIO_ONLY)
 
