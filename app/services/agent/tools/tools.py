@@ -42,8 +42,8 @@ def load_knowledge_base(resource_centre_id: str) -> KnowledgeBase:
         return KB_CACHE[resource_centre_id]
 
     with Timer(f"Load KB for {resource_centre_id}"):
-        index = faiss.read_index(f"knowledge_base/{resource_centre_id}_faiss.index")
-        with open(f"knowledge_base/{resource_centre_id}_chunks.pkl", "rb") as f:
+        index = faiss.read_index(f"app/knowledge_base/{resource_centre_id}_faiss.index")
+        with open(f"app/knowledge_base/{resource_centre_id}_chunks.pkl", "rb") as f:
             chunks = pickle.load(f)
 
     kb = KnowledgeBase(index=index, chunks=chunks)
