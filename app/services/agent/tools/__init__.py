@@ -51,6 +51,15 @@ def resolve_get_available_slots(ctx: ToolContext):
 def resolve_reschedule_appointment(ctx: ToolContext):
     return reschedule_appointment
 
+def resolve_end_call(ctx: ToolContext):
+    return end_call
+
+def resolve_transfer_to_human(ctx: ToolContext):
+    return transfer_to_human
+
+def resolve_detected_voicemail(ctx: ToolContext):
+    return detected_voicemail
+
 
 TOOL_REGISTRY = {
     "ask_knowledge_base": resolve_ask_knowledge_base,
@@ -59,8 +68,8 @@ TOOL_REGISTRY = {
     "cancel_appointment": resolve_cancel_appointment,
     "get_available_slots": resolve_get_available_slots,
     "reschedule_appointment": resolve_reschedule_appointment,
-    "end_call": end_call,
-    "transfer_to_human": transfer_to_human,
+    "end_call": resolve_end_call,
+    "transfer_to_human": resolve_transfer_to_human,
     "detected_voicemail": detected_voicemail,
 }
 
