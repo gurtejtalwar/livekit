@@ -77,7 +77,7 @@ class OutboundCaller(Agent):
         )
 
     @function_tool()
-    async def transfer_call(self, ctx: RunContext):
+    async def transfer_call(self, ctx: RunContext, reason: str):
         """Transfer the call to a human agent, called after confirming with the user"""
 
         transfer_to = self.dial_info["transfer_to"]
@@ -110,7 +110,7 @@ class OutboundCaller(Agent):
             await self.hangup()
 
     @function_tool()
-    async def end_call(self, ctx: RunContext):
+    async def end_call(self, ctx: RunContext, reason: str):
         """Called when the user wants to end the call"""
         logger.info(f"ending the call for {self.participant.identity}")
 
@@ -160,7 +160,7 @@ class OutboundCaller(Agent):
         return "reservation confirmed"
 
     @function_tool()
-    async def detected_answering_machine(self, ctx: RunContext):
+    async def detected_answering_machine(self, ctx: RunContext, dummy: str):
         """Called when the call reaches voicemail. Use this tool AFTER you hear the voicemail greeting"""
         logger.info(f"detected answering machine for {self.participant.identity}")
         await self.hangup()
@@ -237,3 +237,11 @@ async def outbound_entrypoint(ctx: JobContext):
             f"{e.metadata.get('sip_status')}"
         )
         ctx.shutdown()
+
+if __name__ == "__main__":
+    # Configure logging for better debugging
+    logging.basicConfig(
+        level=logging.INFO,
+        format='%(asctime)s - %(name)s - %(levelname)s - %(message)s'
+    )
+    cli.run_app(outbound_server)
