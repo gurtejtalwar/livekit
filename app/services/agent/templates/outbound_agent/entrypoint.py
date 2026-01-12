@@ -33,7 +33,7 @@ from livekit.plugins.turn_detector.english import EnglishModel
 outbound_server = AgentServer()
 
 # load environment variables, this is optional, only used for local development
-load_dotenv(dotenv_path=".env")
+load_dotenv(dotenv_path=".env", override=True)
 logger = logging.getLogger("outbound-agent")
 logger.setLevel(logging.INFO)
 

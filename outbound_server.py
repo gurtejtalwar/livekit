@@ -7,7 +7,7 @@ from livekit.agents import (
 
 from app.services.agent.templates.outbound_agent.entrypoint import outbound_server # noqa: F401
 
-load_dotenv(override=True)
+load_dotenv(dotenv_path=".env", override=True)
 
 if __name__ == "__main__":
     # Configure logging for better debugging
