@@ -16,7 +16,7 @@ async def run():
         dispatch_rule = api.SIPDispatchRuleInfo(
             rule = rule,
             name = 'Inbound Dispatch Rule',
-            trunk_ids = ["ST_YuduAaiqKQuF"],
+            trunk_ids = ["ST_H2iA34Xp5tim"],
             room_config=api.RoomConfiguration(
                 agents=[api.RoomAgentDispatch(
                     agent_name="inbound-agent",
@@ -26,7 +26,7 @@ async def run():
         )
         )
 
-        dispatch =  await lkapi.sip.create_sip_dispatch_rule(request)
+        dispatch =  await lkapi.sip.create_dispatch_rule(request)
         print("created dispatch", dispatch)
     finally:
         await lkapi.aclose()
