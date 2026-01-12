@@ -238,10 +238,3 @@ async def outbound_entrypoint(ctx: JobContext):
         )
         ctx.shutdown()
 
-if __name__ == "__main__":
-    # Configure logging for better debugging
-    logging.basicConfig(
-        level=logging.INFO,
-        format='%(asctime)s - %(name)s - %(levelname)s - %(message)s'
-    )
-    cli.run_app(outbound_server)
