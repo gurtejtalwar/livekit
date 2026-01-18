@@ -6,7 +6,7 @@ from dataclasses import dataclass, field
 
 from livekit.agents import Agent
 from livekit.agents.metrics import LLMMetrics
-from livekit.plugins import deepgram, cartesia, groq, openai
+from livekit.plugins import deepgram, cartesia, groq, openai, elevenlabs
 from livekit.plugins.turn_detector.english import EnglishModel
 
 from app.services.agent import AgentConfig
@@ -26,8 +26,8 @@ async def load_agent_config(user_data, agent_id: str) -> AgentConfig:
         llm_provider="groq",
         llm_model="qwen/qwen3-32b",
         max_tokens=1000,
-        tts_provider="cartesia",
-        voice_id="b0aa4612-81d2-4df3-9730-3fc064754b1f",#"820a3788-2b37-4d21-847a-b65d8a68c99a",#"b0aa4612-81d2-4df3-9730-3fc064754b1f",#"6ccbfb76-1fc6-48f7-b71d-91ac6298247b",#"820a3788-2b37-4d21-847a-b65d8a68c99a",#"b0aa4612-81d2-4df3-9730-3fc064754b1f",#"6ccbfb76-1fc6-48f7-b71d-91ac6298247b",
+        tts_provider="elevenlabs",
+        voice_id="FGY2WhTYpPnrIDTdsKH5",#"820a3788-2b37-4d21-847a-b65d8a68c99a",#"b0aa4612-81d2-4df3-9730-3fc064754b1f",#"6ccbfb76-1fc6-48f7-b71d-91ac6298247b",#"820a3788-2b37-4d21-847a-b65d8a68c99a",#"b0aa4612-81d2-4df3-9730-3fc064754b1f",#"6ccbfb76-1fc6-48f7-b71d-91ac6298247b",
         # emotion="Determined",
         speed=0.75,
         volume=2.0,
@@ -54,14 +54,15 @@ class InboundAgent(Agent):
             #     tool_choice="auto",
             #     max_completion_tokens=config.max_tokens,
             # ),
-            tts=deepgram.TTS(),
-            # cartesia.TTS(
-            #     model="sonic-turbo",
-            #     voice=config.voice_id,
-            #     emotion=config.emotion,
-            #     speed=config.speed,
-            #     volume=config.volume,
-            # ),
+            # tts=elevenlabs.TTS(voice_id="FGY2WhTYpPnrIDTdsKH5"),
+            # tts=deepgram.TTS(),
+            tts=cartesia.TTS(
+                model="sonic-turbo",
+                voice=config.voice_id,
+                emotion=config.emotion,
+                speed=config.speed,
+                volume=config.volume,
+            ),
             turn_detection=EnglishModel(),
             tools=tools,
             allow_interruptions=config.allow_interruptions,
@@ -130,6 +131,14 @@ class AgentFactory:
                 emotion=config.emotion,
                 speed=config.speed,
                 volume=config.volume,
+            )
+        if config.tts_provider == "elevenlabs":
+            tts = elevenlabs.TTS(
+                model="eleven_turbo_v2_5",
+                voice_id=config.voice_id,
+                # emotion=config.emotion,
+                # speed=config.speed,
+                # volume=config.volume,
             )
         else:
             raise ValueError("Unsupported TTS")
