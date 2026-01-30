@@ -41,7 +41,7 @@ def handle_stt_metrics(metrics_data: metrics.STTMetrics):
     table.add_row("Label", str(metrics_data.label))
     table.add_row("Request ID", str(metrics_data.request_id))
     table.add_row("Timestamp", timestamp)
-    table.add_row("Audio Duration", f"[white]{metrics_data.audio_duration / 1000:.4f}[/white]s")
+    table.add_row("Audio Duration", f"[white]{metrics_data.audio_duration}[/white]s")
     table.add_row("Streamed", "✓" if metrics_data.streamed else "✗")
 
     display_metrics_table(table)
@@ -59,14 +59,14 @@ def handle_llm_metrics(metrics_data: metrics.LLMMetrics):
     table.add_row("Label", str(metrics_data.label))
     table.add_row("Request ID", str(metrics_data.request_id))
     table.add_row("Timestamp", timestamp)
-    table.add_row("Duration", f"[white]{metrics_data.duration / 1000:.4f}[/white]s")
-    table.add_row("Time to First Token", f"[white]{metrics_data.ttft / 1000:.4f}[/white]s")
+    table.add_row("Duration", f"[white]{metrics_data.duration}[/white]s")
+    table.add_row("Time to First Token", f"[white]{metrics_data.ttft}[/white]s")
     table.add_row("Cancelled", "✓" if metrics_data.cancelled else "✗")
     table.add_row("Completion Tokens", str(metrics_data.completion_tokens))
     table.add_row("Input Tokens", str(metrics_data.prompt_tokens))
     table.add_row("Cached Tokens", str(metrics_data.prompt_cached_tokens))
     table.add_row("Total Tokens", str(metrics_data.total_tokens))
-    table.add_row("Tokens/Second", f"{metrics_data.tokens_per_second:.2f}")
+    table.add_row("Tokens/Second", f"{metrics_data.tokens_per_second}")
 
     display_metrics_table(table)
 
@@ -104,9 +104,9 @@ def handle_vad_metrics(metrics_data: metrics.VADMetrics):
     table.add_row("Type", str(metrics_data.type))
     table.add_row("Label", str(metrics_data.label))
     table.add_row("Timestamp", timestamp)
-    table.add_row("Idle Time", f"[white]{metrics_data.idle_time / 1000:.4f}[/white]s")
+    table.add_row("Idle Time", f"[white]{metrics_data.idle_time}[/white]s")
     table.add_row("Inference Count", str(metrics_data.inference_count))
-    table.add_row("Inference Duration Total", f"[white]{metrics_data.inference_duration_total / 1000:.4f}[/white]s")
+    table.add_row("Inference Duration Total", f"[white]{metrics_data.inference_duration_total}[/white]s")
 
     display_metrics_table(table)
 
@@ -122,8 +122,8 @@ def handle_eou_metrics(metrics_data: metrics.EOUMetrics):
     table.add_row("Type", str(metrics_data.type))
     table.add_row("Timestamp", timestamp)
     table.add_row("Speech Id", metrics_data.speech_id or "N/A")
-    table.add_row("End of Utterance Delay", f"[white]{metrics_data.end_of_utterance_delay / 1000:.4f}[/white]s")
-    table.add_row("Transcription Delay", f"[white]{metrics_data.transcription_delay / 1000:.4f}[/white]s")
-    table.add_row("On User Turn Completed Delay", f"[white]{metrics_data.on_user_turn_completed_delay / 1000:.4f}[/white]s")
+    table.add_row("End of Utterance Delay", f"[white]{metrics_data.end_of_utterance_delay}[/white]s")
+    table.add_row("Transcription Delay", f"[white]{metrics_data.transcription_delay}[/white]s")
+    table.add_row("On User Turn Completed Delay", f"[white]{metrics_data.on_user_turn_completed_delay}[/white]s")
 
     display_metrics_table(table)
