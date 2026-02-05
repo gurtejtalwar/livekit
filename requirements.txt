@@ -1,4 +1,4 @@
-livekit-agents[deepgram,openai,cartesia,silero,elevenlabs,turn-detector]~=1.0
+livekit-agents[deepgram,openai,cartesia,silero,assemblyai,elevenlabs,turn-detector]~=1.0
 livekit==1.0.19
 livekit-plugins-noise-cancellation~=0.2
 python-dotenv
@@ -10,3 +10,6 @@ llama-index-embeddings-openai~=0.2.0
 llama-index-llms-openai
 pinecone
 pymongo
+motor
+fastapi>=0.100.0
+uvicorn[standard]>=0.23.0
