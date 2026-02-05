@@ -24,11 +24,13 @@ usage_collector = metrics.UsageCollector()
 #TODO Fetch from db
 @dataclass
 class UserData:
+    id: str
     name: str
     email: str
     phone: str
 
 ud = UserData(
+    id="693a6b84dc31118495e34e27",
     name="Gurtej Singh",
     email="gurtej@gmail.com",
     phone="+917460015555"

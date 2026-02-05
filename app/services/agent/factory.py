@@ -1,5 +1,6 @@
 import logging
 import asyncio
+import time
 from dataclasses import dataclass, field
 
 
@@ -12,7 +13,7 @@ from livekit.plugins.turn_detector.english import EnglishModel
 from app.services.agent import AgentConfig
 from app.services.agent.prompt import inbound as inbound_prompt
 from app.services.agent.tools import resolve_tools
-from app.database.db import db
+from app.models import call_models
 
 logger = logging.getLogger("factory")
 
@@ -20,7 +21,9 @@ async def load_agent_config(user_data, agent_id: str) -> AgentConfig:
     # TODO
     #  return hardcoded config
     return AgentConfig(
-        agent_id=agent_id,
+        user_id=str(user_data.id),
+        agent_name="TestAgent",
+        agent_id=str(agent_id),
         knowledge_base_id= "perceptyne" if agent_id == "perceptyne" else "eminence", #TODO
         system_prompt=inbound_prompt.f_prompt+f"\nUser Data: Name: {user_data.name}, Email: {user_data.email}, Phone: {user_data.phone}\n",
         llm_provider="groq",
@@ -69,35 +72,42 @@ class InboundAgent(Agent):
             min_endpointing_delay=0.05,
             max_endpointing_delay=0.6,
         )
+        self.config = config
 
-    def on_enter(self):
+    async def on_enter(self):
         logger.info("Node: on_enter called")
+        self.call_id = call_models.on_call_arrived(self.config, self.session)
         # def sync_wrapper(metrics: LLMMetrics):
         #     asyncio.create_task(self.on_metrics_collected(metrics))
 
         # self.session.llm.on("metrics_collected", sync_wrapper)
         # self.session.generate_reply()
     
-    def stt_node(self,
+    async def stt_node(self,
                  audio,
                  model_settings):
         logger.info("Node: stt_node called")
         return self.default.stt_node(self, audio, model_settings)
 
 
-    def llm_node(self, chat_ctx, tools, model_settings):
+    async def llm_node(self, chat_ctx, tools, model_settings):
         logger.info("Node: llm_node called")
         return self.default.llm_node(self, chat_ctx, tools, model_settings)
     
-    def trancription_node(self, text, model_settings):
+    async def trancription_node(self, text, model_settings):
         logger.info("Node: transcription_node called")
         return self.default.transcription_node(self, text, model_settings)
           
-    def tts_node(self,
+    async def tts_node(self,
                  text,
                  model_settings):
         logger.info("Node: tts_node called")
         return self.default.tts_node(self, text, model_settings)
+    
+    async def on_exit(self):
+        logger.info("Node: on_exit called")
+        call_models.on_call_ended(self.call_id, config=self.config, session=self.session)
+        # self.session.llm.off("metrics_collected", self.on_metrics_collected)
 
 class AgentFactory:
     @staticmethod
