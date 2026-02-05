@@ -11,7 +11,7 @@ dependencies = [
     "langchain-openai>=1.1.2",
     "langchain-pinecone>=0.2.13",
     "livekit[inference]==1.0.19",
-    "livekit-agents[assemblyai,cartesia,deepgram,elevenlabs,groq,openai,silero,turn-detector]~=1.2",
+    "livekit-agents[assemblyai,cartesia,deepgram,elevenlabs,groq,openai,silero,turn-detector]~=1.0",
     "livekit-plugins-noise-cancellation~=0.2",
     "llama-index-core~=0.11.10",
     "llama-index-embeddings-openai~=0.2.0",
@@ -27,4 +27,6 @@ dependencies = [
     "sentence-transformers>=5.2.0",
     "tiktoken>=0.12.0",
     "mongoengine>=0.29.1",
+    "fastapi>=0.100.0",
+    "uvicorn[standard]>=0.23.0",
 ]
