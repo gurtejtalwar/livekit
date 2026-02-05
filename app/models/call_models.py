@@ -3,9 +3,11 @@ from bson import ObjectId
 from datetime import datetime
 
 from mongoengine import (
+    DoesNotExist,
     Document,
     StringField,
     IntField,
+    FloatField,
     BooleanField,
     ObjectIdField,
     DateTimeField,
@@ -16,11 +18,36 @@ from mongoengine import (
     DictField,
 )
 from livekit.agents import AgentSession
+from livekit.agents.metrics import UsageSummary
 
 from app.services.agent import AgentConfig
 from app.models import db
 
-class Calls(Document):
+class UsageSummaryEmbedded(EmbeddedDocument):
+    llm_prompt_tokens = IntField(default=0)
+    llm_prompt_cached_tokens = IntField(default=0)
+
+    llm_input_audio_tokens = IntField(default=0)
+    llm_input_cached_audio_tokens = IntField(default=0)
+
+    llm_input_text_tokens = IntField(default=0)
+    llm_input_cached_text_tokens = IntField(default=0)
+
+    llm_input_image_tokens = IntField(default=0)
+    llm_input_cached_image_tokens = IntField(default=0)
+
+    llm_completion_tokens = IntField(default=0)
+
+    llm_output_audio_tokens = IntField(default=0)
+    llm_output_image_tokens = IntField(default=0)
+    llm_output_text_tokens = IntField(default=0)
+
+    tts_characters_count = IntField(default=0)
+    tts_audio_duration = FloatField(default=0.0)
+    stt_audio_duration = FloatField(default=0.0)
+
+
+class VoiceCalls(Document):
     meta = {
         "collection": "voice-calls",
         "indexes": [
@@ -123,7 +150,7 @@ class ConversationMetadata(EmbeddedDocument):
 
     timezone = StringField()
 
-class CallDetails(Document):
+class VoiceCallDetails(Document):
     meta = {
         "collection": "voice-calls-detail",
         "indexes": [
@@ -156,6 +183,7 @@ class CallDetails(Document):
     has_response_audio = BooleanField()
 
     voice_summary = StringField()
+    usage_summary = EmbeddedDocumentField(UsageSummaryEmbedded)
 
     created_at = DateTimeField(default=datetime.utcnow)
     updated_at = DateTimeField(default=datetime.utcnow)
@@ -167,7 +195,7 @@ def on_call_arrived(config: AgentConfig, session: AgentSession) -> ObjectId:
     Extracts minimal data from config + session.
     """
 
-    call = Calls(
+    call = VoiceCalls(
         user_id=config.user_id,
         agent_id=config.agent_id,
         agent_name=config.agent_name,
@@ -177,7 +205,7 @@ def on_call_arrived(config: AgentConfig, session: AgentSession) -> ObjectId:
         status="in_progress",
     ).save()
 
-    CallDetails(
+    VoiceCallDetails(
         call_id=str(call.id),                 # internal linkage
         user_id=config.user_id,
         agent_id=config.agent_id,
@@ -196,7 +224,7 @@ def on_call_ended(
 ):
     """
     Called when call completes.
-    Uses Mongo Calls._id as primary key.
+    Uses Mongo VoiceCalls._id as primary key.
     """
 
     transcript_raw = ""#TODO session.transcript or []
@@ -204,9 +232,9 @@ def on_call_ended(
     analysis_raw = ""#TODO session.analysis or {}
 
     # -------------------------
-    # Update Calls (summary)
+    # Update VoiceCalls (summary)
     # -------------------------
-    Calls.objects(
+    VoiceCalls.objects(
         id=call_id,
         status="in_progress",  # protects against double-finalization
     ).update_one(
@@ -225,9 +253,9 @@ def on_call_ended(
     transcript_docs = build_transcript_messages(session.history.items)
 
     # -------------------------
-    # Update CallDetails
+    # Update VoiceCallDetails
     # -------------------------
-    CallDetails.objects(
+    VoiceCallDetails.objects(
         call_id=str(call_id)
     ).update_one(
         set__status="completed",
@@ -299,3 +327,35 @@ def build_transcript_messages(raw_events: list) -> list[TranscriptMessage]:
         )
 
     return transcript
+
+async def save_usage_summary(call_id: str, summary: UsageSummary):
+    try:
+        call: VoiceCallDetails = VoiceCallDetails.objects.get(id=call_id)
+    except DoesNotExist:
+        return
+
+    call.usage_summary = UsageSummaryEmbedded(
+        llm_prompt_tokens=summary.llm_prompt_tokens,
+        llm_prompt_cached_tokens=summary.llm_prompt_cached_tokens,
+
+        llm_input_audio_tokens=summary.llm_input_audio_tokens,
+        llm_input_cached_audio_tokens=summary.llm_input_cached_audio_tokens,
+
+        llm_input_text_tokens=summary.llm_input_text_tokens,
+        llm_input_cached_text_tokens=summary.llm_input_cached_text_tokens,
+
+        llm_input_image_tokens=summary.llm_input_image_tokens,
+        llm_input_cached_image_tokens=summary.llm_input_cached_image_tokens,
+
+        llm_completion_tokens=summary.llm_completion_tokens,
+
+        llm_output_audio_tokens=summary.llm_output_audio_tokens,
+        llm_output_image_tokens=summary.llm_output_image_tokens,
+        llm_output_text_tokens=summary.llm_output_text_tokens,
+
+        tts_characters_count=summary.tts_characters_count,
+        tts_audio_duration=summary.tts_audio_duration,
+        stt_audio_duration=summary.stt_audio_duration,
+    )
+
+    call.save()

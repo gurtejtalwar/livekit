@@ -112,40 +112,40 @@ class InboundAgent(Agent):
 class AgentFactory:
     @staticmethod
         #TODO move to InboundAgent
-    def create_agent(config: AgentConfig) -> Agent: 
+    def from_config(cfg: AgentConfig) -> Agent: 
         #TODO move to InboundAgent
         # ----- STT -----
         #TODO need class methods
-        if config.stt_provider == "deepgram":
+        if cfg.stt_provider == "deepgram":
             stt = deepgram.STT()
         else:
             raise ValueError("Unsupported STT")
 
         # ----- LLM -----
         #TODO need class methods
-        if config.llm_provider == "groq":
+        if cfg.llm_provider == "groq":
             llm = groq.LLM(
-                model=config.llm_model,
+                model=cfg.llm_model,
                 tool_choice="auto",
-                max_completion_tokens=config.max_tokens,
+                max_completion_tokens=cfg.max_tokens,
             )
         else:
             raise ValueError("Unsupported LLM")
 
         # ----- TTS -----
         #TODO need class methods
-        if config.tts_provider == "cartesia":
+        if cfg.tts_provider == "cartesia":
             tts = cartesia.TTS(
                 model="sonic-turbo",
-                voice=config.voice_id,
-                emotion=config.emotion,
-                speed=config.speed,
-                volume=config.volume,
+                voice=cfg.voice_id,
+                emotion=cfg.emotion,
+                speed=cfg.speed,
+                volume=cfg.volume,
             )
-        if config.tts_provider == "elevenlabs":
+        if cfg.tts_provider == "elevenlabs":
             tts = elevenlabs.TTS(
                 model="eleven_turbo_v2_5",
-                voice_id=config.voice_id,
+                voice_id=cfg.voice_id,
                 # emotion=config.emotion,
                 # speed=config.speed,
                 # volume=config.volume,
@@ -153,10 +153,10 @@ class AgentFactory:
         else:
             raise ValueError("Unsupported TTS")
 
-        tools = resolve_tools(config)
+        tools = resolve_tools(cfg)
         #TODO move to InboundAgent
 
-        return InboundAgent(config, tools)
+        return InboundAgent(cfg, tools)
         # return Agent(
         #     instructions=inbound_prompt.f_prompt,
         #     stt=stt,

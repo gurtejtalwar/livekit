@@ -14,6 +14,7 @@ from livekit.agents import (metrics,
 
 from app.services.agent import agent_metrics
 from app.services.agent.factory import AgentFactory, load_agent_config
+from app.models.call_models import save_usage_summary
 
 inbound_server = AgentServer()
 
@@ -48,7 +49,7 @@ async def inbound_entrypoint(ctx: JobContext):
                            userdata=ud,
                            user_away_timeout=10)
 
-    agent = AgentFactory.create_agent(agent_config)
+    agent = AgentFactory.from_config(agent_config)
 
     inactivity_task: asyncio.Task | None = None
 
@@ -95,6 +96,7 @@ async def inbound_entrypoint(ctx: JobContext):
     async def log_usage():
         summary = usage_collector.get_summary()
         logger.info(f"Usage: {summary}")
+        await save_usage_summary(session.call_id, summary)
 
     ctx.add_shutdown_callback(log_usage)
 
