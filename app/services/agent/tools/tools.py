@@ -4,7 +4,9 @@ import faiss
 import torch
 import asyncio
 import logging
+import gc
 
+import time
 from dotenv import load_dotenv
 from typing import Optional, List
 from pydantic import BaseModel
@@ -25,6 +27,7 @@ class KnowledgeBase:
     def __init__(self, index, chunks):
         self.index = index
         self.chunks = chunks
+        self.last_used = time.time()
 
     def search(self, query_emb, k=3):
         dist, idx = self.index.search(query_emb, k)
@@ -33,6 +36,38 @@ class KnowledgeBase:
             self.chunks[i] if 0 <= i < len(self.chunks) else "[INVALID INDEX]"
             for i in indices
         ]
+
+class KBManager:
+    def __init__(self):
+        self._kbs: dict[str, KnowledgeBase] = {}
+        self._lock = asyncio.Lock()
+
+async def get_kb(self, agent_id: str) -> KnowledgeBase:
+    async with self._lock:
+        kb = self._kbs.get(agent_id)
+        if kb:
+            kb.last_used = time.time()
+            return kb
+
+        index = faiss.read_index(f"kb/{agent_id}/faiss.index")
+        with open(f"kb/{agent_id}/chunks.pkl", "rb") as f:
+            chunks = pickle.load(f)
+
+        kb = KnowledgeBase(index, chunks)
+        self._kbs[agent_id] = kb
+        return kb
+
+async def unload_kb(self, agent_id: str):
+    async with self._lock:
+        kb = self._kbs.pop(agent_id, None)
+        if not kb:
+            return
+
+        del kb.index
+        del kb.chunks
+        del kb
+
+    gc.collect()
 
 KB_CACHE = {} #TODO HAZARD use redis
 

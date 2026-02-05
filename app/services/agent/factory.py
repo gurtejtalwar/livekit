@@ -1,18 +1,19 @@
 import logging
 import asyncio
+import time
 from dataclasses import dataclass, field
 
 
 
 from livekit.agents import Agent
 from livekit.agents.metrics import LLMMetrics
-from livekit.plugins import deepgram, cartesia, groq, openai
+from livekit.plugins import deepgram, cartesia, groq, openai, elevenlabs
 from livekit.plugins.turn_detector.english import EnglishModel
 
 from app.services.agent import AgentConfig
 from app.services.agent.prompt import inbound as inbound_prompt
 from app.services.agent.tools import resolve_tools
-from app.database.db import db
+from app.models import call_models
 
 logger = logging.getLogger("factory")
 
@@ -20,14 +21,16 @@ async def load_agent_config(user_data, agent_id: str) -> AgentConfig:
     # TODO
     #  return hardcoded config
     return AgentConfig(
-        agent_id=agent_id,
+        user_id=str(user_data.id),
+        agent_name="TestAgent",
+        agent_id=str(agent_id),
         knowledge_base_id= "perceptyne" if agent_id == "perceptyne" else "eminence", #TODO
         system_prompt=inbound_prompt.f_prompt+f"\nUser Data: Name: {user_data.name}, Email: {user_data.email}, Phone: {user_data.phone}\n",
         llm_provider="groq",
         llm_model="qwen/qwen3-32b",
         max_tokens=1000,
-        tts_provider="cartesia",
-        voice_id="820a3788-2b37-4d21-847a-b65d8a68c99a",#"b0aa4612-81d2-4df3-9730-3fc064754b1f",#"6ccbfb76-1fc6-48f7-b71d-91ac6298247b",#"820a3788-2b37-4d21-847a-b65d8a68c99a",#"b0aa4612-81d2-4df3-9730-3fc064754b1f",#"6ccbfb76-1fc6-48f7-b71d-91ac6298247b",
+        tts_provider="elevenlabs",
+        voice_id="FGY2WhTYpPnrIDTdsKH5",#"820a3788-2b37-4d21-847a-b65d8a68c99a",#"b0aa4612-81d2-4df3-9730-3fc064754b1f",#"6ccbfb76-1fc6-48f7-b71d-91ac6298247b",#"820a3788-2b37-4d21-847a-b65d8a68c99a",#"b0aa4612-81d2-4df3-9730-3fc064754b1f",#"6ccbfb76-1fc6-48f7-b71d-91ac6298247b",
         # emotion="Determined",
         speed=0.75,
         volume=2.0,
@@ -54,49 +57,57 @@ class InboundAgent(Agent):
             #     tool_choice="auto",
             #     max_completion_tokens=config.max_tokens,
             # ),
-            tts=deepgram.TTS(),
-            # cartesia.TTS(
-            #     model="sonic-turbo",
-            #     voice=config.voice_id,
-            #     emotion=config.emotion,
-            #     speed=config.speed,
-            #     volume=config.volume,
-            # ),
+            # tts=elevenlabs.TTS(voice_id="FGY2WhTYpPnrIDTdsKH5"),
+            # tts=deepgram.TTS(),
+            tts=cartesia.TTS(
+                model="sonic-turbo",
+                # voice=config.voice_id,
+                # emotion=config.emotion,
+                # speed=config.speed,
+                # volume=config.volume,
+            ),
             turn_detection=EnglishModel(),
             tools=tools,
             allow_interruptions=config.allow_interruptions,
             min_endpointing_delay=0.05,
             max_endpointing_delay=0.6,
         )
+        self.config = config
 
-    def on_enter(self):
+    async def on_enter(self):
         logger.info("Node: on_enter called")
+        self.call_id = call_models.on_call_arrived(self.config, self.session)
         # def sync_wrapper(metrics: LLMMetrics):
         #     asyncio.create_task(self.on_metrics_collected(metrics))
 
         # self.session.llm.on("metrics_collected", sync_wrapper)
         # self.session.generate_reply()
     
-    def stt_node(self,
+    async def stt_node(self,
                  audio,
                  model_settings):
         logger.info("Node: stt_node called")
         return self.default.stt_node(self, audio, model_settings)
 
 
-    def llm_node(self, chat_ctx, tools, model_settings):
+    async def llm_node(self, chat_ctx, tools, model_settings):
         logger.info("Node: llm_node called")
         return self.default.llm_node(self, chat_ctx, tools, model_settings)
     
-    def trancription_node(self, text, model_settings):
+    async def trancription_node(self, text, model_settings):
         logger.info("Node: transcription_node called")
         return self.default.transcription_node(self, text, model_settings)
           
-    def tts_node(self,
+    async def tts_node(self,
                  text,
                  model_settings):
         logger.info("Node: tts_node called")
         return self.default.tts_node(self, text, model_settings)
+    
+    async def on_exit(self):
+        logger.info("Node: on_exit called")
+        call_models.on_call_ended(self.call_id, config=self.config, session=self.session)
+        # self.session.llm.off("metrics_collected", self.on_metrics_collected)
 
 class AgentFactory:
     @staticmethod
@@ -130,6 +141,14 @@ class AgentFactory:
                 emotion=config.emotion,
                 speed=config.speed,
                 volume=config.volume,
+            )
+        if config.tts_provider == "elevenlabs":
+            tts = elevenlabs.TTS(
+                model="eleven_turbo_v2_5",
+                voice_id=config.voice_id,
+                # emotion=config.emotion,
+                # speed=config.speed,
+                # volume=config.volume,
             )
         else:
             raise ValueError("Unsupported TTS")

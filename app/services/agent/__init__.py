@@ -15,7 +15,9 @@ class LLMProvider:
 
 @dataclass
 class AgentConfig:
+    user_id: str
     agent_id: str
+    agent_name: str
     knowledge_base_id: str
     # LLM
     system_prompt: str
