@@ -3,6 +3,8 @@ from rich.table import Table
 from rich import box
 
 from livekit.agents import metrics
+from dataclasses import dataclass
+from typing import Optional
 
 console = Console()
 
@@ -29,7 +31,7 @@ def display_metrics_table(table: Table):
     console.print("\n")
 
 
-def handle_stt_metrics(metrics_data: metrics.STTMetrics):
+def print_stt_metrics(metrics_data: metrics.STTMetrics):
     """Handle STT metrics display."""
     table = create_table("[bold blue]STT Metrics Report[/bold blue]")
     table.add_column("Metric", style="bold green")
@@ -47,7 +49,7 @@ def handle_stt_metrics(metrics_data: metrics.STTMetrics):
     display_metrics_table(table)
 
 
-def handle_llm_metrics(metrics_data: metrics.LLMMetrics):
+def print_llm_metrics(metrics_data: metrics.LLMMetrics):
     """Handle LLM metrics display."""
     table = create_table("[bold blue]LLM Metrics Report[/bold blue]")
     table.add_column("Metric", style="bold green")
@@ -71,7 +73,7 @@ def handle_llm_metrics(metrics_data: metrics.LLMMetrics):
     display_metrics_table(table)
 
 
-def handle_tts_metrics(metrics_data: metrics.TTSMetrics):
+def print_tts_metrics(metrics_data: metrics.TTSMetrics):
     """Handle TTS metrics display."""
     table = create_table("[bold blue]TTS Metrics Report[/bold blue]")
     table.add_column("Metric", style="bold green")
@@ -93,7 +95,7 @@ def handle_tts_metrics(metrics_data: metrics.TTSMetrics):
     display_metrics_table(table)
 
 
-def handle_vad_metrics(metrics_data: metrics.VADMetrics):
+def print_vad_metrics(metrics_data: metrics.VADMetrics):
     """Handle VAD metrics display."""
     table = create_table("[bold blue]VAD Metrics Report[/bold blue]")
     table.add_column("Metric", style="bold green")
@@ -111,7 +113,7 @@ def handle_vad_metrics(metrics_data: metrics.VADMetrics):
     display_metrics_table(table)
 
 
-def handle_eou_metrics(metrics_data: metrics.EOUMetrics):
+def print_eou_metrics(metrics_data: metrics.EOUMetrics):
     """Handle EOU metrics display."""
     table = create_table("[bold blue]EOU Metrics Report[/bold blue]")
     table.add_column("Metric", style="bold green")
@@ -127,3 +129,65 @@ def handle_eou_metrics(metrics_data: metrics.EOUMetrics):
     table.add_row("On User Turn Completed Delay", f"[white]{metrics_data.on_user_turn_completed_delay}[/white]s")
 
     display_metrics_table(table)
+
+
+@dataclass
+class AvgAccumulator:
+    total: float = 0.0
+    count: int = 0
+
+    def add(self, value: Optional[float]):
+        if value is None:
+            return
+        self.total += value
+        self.count += 1
+
+    def avg(self) -> Optional[float]:
+        if self.count == 0:
+            return None
+        return self.total / self.count
+
+class CallMetricsAggregator:
+    def __init__(self):
+        # STT
+        self.stt_audio_duration = AvgAccumulator()
+
+        # LLM
+        self.llm_duration = AvgAccumulator()
+        self.llm_ttft = AvgAccumulator()
+        self.llm_tokens_per_second = AvgAccumulator()
+        self.llm_total_tokens = AvgAccumulator()
+
+        # TTS
+        self.tts_duration = AvgAccumulator()
+        self.tts_audio_duration = AvgAccumulator()
+        self.tts_ttfb = AvgAccumulator()
+
+        # VAD
+        self.vad_idle_time = AvgAccumulator()
+        self.vad_inference_duration_total = AvgAccumulator()
+
+        # EOU
+        self.eou_delay = AvgAccumulator()
+        self.eou_transcription_delay = AvgAccumulator()
+        self.eou_turn_completed_delay = AvgAccumulator()
+
+def handle_stt_metrics(metrics_data: metrics.STTMetrics, agg: CallMetricsAggregator):
+    agg.stt_audio_duration.add(metrics_data.audio_duration)
+
+def handle_llm_metrics(metrics_data: metrics.LLMMetrics, agg: CallMetricsAggregator):
+    agg.llm_duration.add(metrics_data.duration)
+    agg.llm_ttft.add(metrics_data.ttft)
+    agg.llm_tokens_per_second.add(metrics_data.tokens_per_second)
+    agg.llm_total_tokens.add(metrics_data.total_tokens)
+
+def handle_tts_metrics(metrics_data: metrics.TTSMetrics, agg: CallMetricsAggregator):
+    agg.tts_duration.add(metrics_data.duration)
+    agg.tts_audio_duration.add(metrics_data.audio_duration)
+    agg.tts_ttfb.add(metrics_data.ttfb)
+
+def handle_vad_metrics(metrics_data: metrics.VADMetrics, agg: CallMetricsAggregator):
+    agg.vad_idle_time.add(metrics_data.idle_time)
+    agg.vad_inference_duration_total.add(
+        metrics_data.inference_duration_total
+    )
