@@ -1,4 +1,5 @@
 import time
+import logging
 from bson import ObjectId
 from datetime import datetime
 
@@ -17,11 +18,13 @@ from mongoengine import (
     ListField,
     DictField,
 )
-from livekit.agents import AgentSession
+from livekit.agents import llm, AgentSession
 from livekit.agents.metrics import UsageSummary
 
 from app.services.agent import AgentConfig
 from app.models import db
+
+logger = logging.getLogger(__name__)
 
 class UsageSummaryEmbedded(EmbeddedDocument):
     llm_prompt_tokens = IntField(default=0)
@@ -79,14 +82,14 @@ class VoiceCalls(Document):
     transcript_summary = StringField()
     call_summary_title = StringField()
 
-    direction = StringField()
+    direction = StringField() #TODO ASK
     rating = IntField()
 
     agent_phone = StringField()
     customer_phone = StringField()
 
     escalation_transfer = StringField(choices=("yes", "no"), default="no")
-    needs_phone_fetch = BooleanField(default=False)
+    needs_phone_fetch = BooleanField(default=False) #TODO ASK
 
     created_at = DateTimeField(default=datetime.utcnow)
     updated_at = DateTimeField(default=datetime.utcnow)
@@ -150,6 +153,28 @@ class ConversationMetadata(EmbeddedDocument):
 
     timezone = StringField()
 
+class SipMetadata(EmbeddedDocument):
+    participant_sid = StringField()
+    trunk_id = StringField()
+    dispatch_rule = StringField()
+    call_to = StringField()
+    call_from = StringField()
+    local_participant_sid = StringField()
+    remote_participant_sid = StringField()
+
+class LivekitMetadata(EmbeddedDocument):
+    sip = EmbeddedDocumentField(SipMetadata)
+    usage = EmbeddedDocumentField(UsageSummaryEmbedded)
+
+class Analysis(EmbeddedDocument):
+    intent = StringField()
+    emotion = StringField()
+    score = FloatField()
+    objection_analysis = StringField()
+    summary: str
+    follow_up_trigger = BooleanField()
+    lead_type = StringField()
+
 class VoiceCallDetails(Document):
     meta = {
         "collection": "voice-calls-detail",
@@ -173,8 +198,8 @@ class VoiceCallDetails(Document):
     transcript = EmbeddedDocumentListField(TranscriptMessage)
 
     metadata = EmbeddedDocumentField(ConversationMetadata)
-
-    analysis = DictField()
+    lk_metadata = EmbeddedDocumentField(LivekitMetadata)
+    analysis = EmbeddedDocumentField(Analysis)
 
     conversation_initiation_client_data = DictField()
 
@@ -183,13 +208,12 @@ class VoiceCallDetails(Document):
     has_response_audio = BooleanField()
 
     voice_summary = StringField()
-    usage_summary = EmbeddedDocumentField(UsageSummaryEmbedded)
 
     created_at = DateTimeField(default=datetime.utcnow)
     updated_at = DateTimeField(default=datetime.utcnow)
 
 
-def on_call_arrived(config: AgentConfig, session: AgentSession) -> ObjectId:
+async def on_call_arrived(config: AgentConfig, session: AgentSession) -> ObjectId:
     """
     Called when a call starts.
     Extracts minimal data from config + session.
@@ -203,6 +227,8 @@ def on_call_arrived(config: AgentConfig, session: AgentSession) -> ObjectId:
         # version_id=getattr(config, "version_id", None),
         start_time_unix_secs=session._started_at,
         status="in_progress",
+        agent_phone=config.call_details.call_to,
+        customer_phone=config.call_details.call_from,
     ).save()
 
     VoiceCallDetails(
@@ -210,15 +236,25 @@ def on_call_arrived(config: AgentConfig, session: AgentSession) -> ObjectId:
         user_id=config.user_id,
         agent_id=config.agent_id,
         agent_name=config.agent_name,
+        lk_metadata=LivekitMetadata(
+            sip=SipMetadata(
+                local_participant_sid=session.room_io.room.local_participant.sid,
+                remote_participant_sid=list(session.room_io.room.remote_participants.values())[0].sid,
+                trunk_id=config.call_details.trunk_id,
+                dispatch_rule=config.call_details.dispatch_rule,
+                call_to=config.call_details.call_to,
+                call_from=config.call_details.call_from,
+            )
+        ),
         # branch_id=getattr(config, "branch_id", None),
         # version_id=getattr(config, "version_id", None),
         status="in_progress",
     ).save()
 
+    session.userdata.call_id = str(call.id)
     return call.id
 
-def on_call_ended(
-    call_id: ObjectId,
+async def on_call_ended(
     config: AgentConfig,
     session: AgentSession,
 ):
@@ -227,20 +263,21 @@ def on_call_ended(
     Uses Mongo VoiceCalls._id as primary key.
     """
 
-    transcript_raw = ""#TODO session.transcript or []
-    metadata_raw = {}#TODO session.metadata or {}
-    analysis_raw = ""#TODO session.analysis or {}
-
     # -------------------------
     # Update VoiceCalls (summary)
     # -------------------------
+    chat_messages = [
+        item for item in session.history.items
+        if isinstance(item, llm.ChatMessage)
+    ]
+
     VoiceCalls.objects(
-        id=call_id,
+        id=session.userdata.call_id,
         status="in_progress",  # protects against double-finalization
     ).update_one(
         set__status="completed",
         set__call_duration_secs=time.time() - session._started_at,
-        set__message_count=len(session.history.items),
+        set__message_count=len(chat_messages),
         set__call_successful="success",
         set__transcript_summary="", #TODO analysis_raw.get("transcript_summary"),
         set__call_summary_title="", #TODO analysis_raw.get("call_summary_title"),
@@ -256,13 +293,13 @@ def on_call_ended(
     # Update VoiceCallDetails
     # -------------------------
     VoiceCallDetails.objects(
-        call_id=str(call_id)
+        call_id=str(session.userdata.call_id)
     ).update_one(
         set__status="completed",
         set__transcript=transcript_docs,
-        set__metadata=ConversationMetadata(**metadata_raw)
-        if metadata_raw
-        else None,
+        # set__metadata=ConversationMetadata(**metadata_raw)
+        # if metadata_raw
+        # else None,
         set__updated_at=datetime.utcnow(),
     )
 
@@ -328,13 +365,41 @@ def build_transcript_messages(raw_events: list) -> list[TranscriptMessage]:
 
     return transcript
 
+def build_transcript_string(history_items: list) -> str:
+    """
+    Builds a readable transcript string from session history.
+    Includes only ChatMessage items (skips AgentHandoff, tools, etc).
+    """
+
+    lines = []
+
+    for item in history_items:
+        if not isinstance(item, llm.ChatMessage):
+            continue  # skip AgentHandoff, system events, etc
+
+        speaker = "Agent" if item.role == "assistant" else "User"
+
+        # content is usually a list of strings
+        if isinstance(item.content, list):
+            text = " ".join(part.strip() for part in item.content if part)
+        else:
+            text = str(item.content).strip()
+
+        if not text:
+            continue
+
+        lines.append(f"{speaker}: {text}")
+
+    return "\n\n".join(lines)
+
 async def save_usage_summary(call_id: str, summary: UsageSummary):
     try:
-        call: VoiceCallDetails = VoiceCallDetails.objects.get(id=call_id)
+        call_details: VoiceCallDetails = VoiceCallDetails.objects.get(call_id=call_id)
     except DoesNotExist:
+        logger.warning(f"CallDetails not found for call_id {call_id} when saving usage summary")
         return
 
-    call.usage_summary = UsageSummaryEmbedded(
+    call_details.usage_summary = UsageSummaryEmbedded(
         llm_prompt_tokens=summary.llm_prompt_tokens,
         llm_prompt_cached_tokens=summary.llm_prompt_cached_tokens,
 
@@ -358,4 +423,15 @@ async def save_usage_summary(call_id: str, summary: UsageSummary):
         stt_audio_duration=summary.stt_audio_duration,
     )
 
-    call.save()
+    call_details.save()
+
+async def save_analysis(call_id: str, analysis: Analysis):
+    try:
+        call_details: VoiceCallDetails = VoiceCallDetails.objects.get(call_id=call_id)
+    except DoesNotExist:
+        logger.warning(f"CallDetails not found for call_id {call_id} when saving analysis")
+        return
+
+    call_details.analysis = analysis
+    call_details.save()
+
