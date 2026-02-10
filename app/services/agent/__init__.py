@@ -1,24 +1,42 @@
 from typing import List, Optional
 from dataclasses import dataclass, field
+from enum import Enum
+from pydantic import BaseModel, ConfigDict
 
-class STTProvider:
+from livekit.agents import JobContext
+
+class STTProvider(str, Enum):
     DEEPGRAM = "deepgram"
     ASSEMBLYAI = "assemblyai"
 
-class TTSProvider:
+class TTSProvider(str, Enum):
     CARTESIA = "cartesia"
     ELEVENLABS = "elevenlabs"
 
-class LLMProvider:
+class LLMProvider(str, Enum):
     GROQ = "groq"
     OPENAI = "openai"
 
-@dataclass
-class AgentConfig:
+
+class CallDetails(BaseModel):
+    livekit_call_id: str
+    call_to: str
+    call_from: str
+    dispatch_rule: str
+    trunk_id: str
+    twilio_account_sid: Optional[str] = None
+    twilio_call_sid: Optional[str] = None
+    hostname: Optional[str] = None
+
+
+class AgentConfig(BaseModel):
     user_id: str
     agent_id: str
     agent_name: str
     knowledge_base_id: str
+
+    call_details: Optional[CallDetails] = None
+
     # LLM
     system_prompt: str
     llm_provider: LLMProvider = LLMProvider.GROQ
@@ -42,3 +60,9 @@ class AgentConfig:
     allow_interruptions: bool = True
 
     greeting: str = "Hello! How can I assist you today?"
+    # Livekit JobContext
+    ctx: JobContext = None
+
+    model_config = ConfigDict(
+        arbitrary_types_allowed=True
+    )
