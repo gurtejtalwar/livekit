@@ -171,7 +171,7 @@ class Analysis(EmbeddedDocument):
     emotion = StringField()
     score = FloatField()
     objection_analysis = StringField()
-    summary: str
+    summary = StringField()
     follow_up_trigger = BooleanField()
     lead_type = StringField()
 
