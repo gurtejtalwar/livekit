@@ -27,7 +27,7 @@ class Settings(BaseSettings):
     # ISC
     N1_ISC_URL: str
     N1_ISC_API_KEY: str
-
+    ISC_AUTH_TOKEN: str
     P1_ISC_URL: str
     P1_ISC_API_KEY: str
 

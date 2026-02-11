@@ -12,14 +12,18 @@ from livekit.agents import (metrics,
                             MetricsCollectedEvent,
                             RoomInputOptions)
 
-from app.services.agent import agent_metrics
+from app.services.agent import agent_metrics, AgentConfig, CallDetails
 from app.services.agent.factory import AgentFactory, load_agent_config
-from app.models.call_models import save_usage_summary
+from app.models import call_models
+from app.shared import schemas
+from app.shared import settings
+from app.utils.requests import _request
 
 inbound_server = AgentServer()
 
 logger = logging.getLogger(__name__)
 
+settings = settings.get_settings()
 usage_collector = metrics.UsageCollector()
 
 #TODO Fetch from db
@@ -29,6 +33,7 @@ class UserData:
     name: str
     email: str
     phone: str
+    call_id: str = None
 
 ud = UserData(
     id="693a6b84dc31118495e34e27",
@@ -37,14 +42,25 @@ ud = UserData(
     phone="+917460015555"
 )
 
+class BGTasks:
+    def __init__(self):
+        self.tasks = []
+    
+    def add(self, coro):
+        task = asyncio.create_task(coro)
+        self.tasks.append(task)
+    
+    async def wait_all(self):
+        await asyncio.gather(*self.tasks)
+
 @inbound_server.rtc_session(agent_name="inbound-agent")
 async def inbound_entrypoint(ctx: JobContext):
     await ctx.connect(auto_subscribe=AutoSubscribe.AUDIO_ONLY)
 
     # Example: resolve from headers / room metadata / API
-    # customer_id = ctx.job.metadata.get("customer_id")
-    # agent_id = ctx.job.metadata.get("agent_id")
+    # agent_id = ctx.job.metadata
     agent_config = await load_agent_config(ud,"eminence") #TODO HAZARD pass uer&agent ID
+    agent_config.ctx = ctx
     session = AgentSession(preemptive_generation=True, 
                            userdata=ud,
                            user_away_timeout=10)
@@ -82,11 +98,11 @@ async def inbound_entrypoint(ctx: JobContext):
         usage_collector.collect(ev.metrics)
         
         metrics_handlers = {
-            "stt_metrics": agent_metrics.handle_stt_metrics,
-            "llm_metrics": agent_metrics.handle_llm_metrics,
-            "tts_metrics": agent_metrics.handle_tts_metrics,
-            "vad_metrics": agent_metrics.handle_vad_metrics,
-            "eou_metrics": agent_metrics.handle_eou_metrics,
+            "stt_metrics": agent_metrics.print_stt_metrics,
+            "llm_metrics": agent_metrics.print_llm_metrics,
+            "tts_metrics": agent_metrics.print_tts_metrics,
+            "vad_metrics": agent_metrics.print_vad_metrics,
+            "eou_metrics": agent_metrics.print_eou_metrics,
         }
         
         handler = metrics_handlers.get(ev.metrics.type)
@@ -96,9 +112,15 @@ async def inbound_entrypoint(ctx: JobContext):
     async def log_usage():
         summary = usage_collector.get_summary()
         logger.info(f"Usage: {summary}")
-        await save_usage_summary(session.call_id, summary)
+        await call_models.save_usage_summary(session.userdata.call_id, summary)
 
-    ctx.add_shutdown_callback(log_usage)
+    async def post_call_tasks():
+        await log_usage()
+        await post_call_analysis(session)
+        await call_models.on_call_ended(agent_config, session)
+
+    ctx.add_shutdown_callback(post_call_tasks)
+
 
     await session.start(
         room=ctx.room,
@@ -111,3 +133,27 @@ async def inbound_entrypoint(ctx: JobContext):
 
     # await session.say(agent_config.greeting)
     await session.generate_reply(instructions="Confirm the user is connected and greet them warmly.")
+
+    
+async def post_call_analysis(session: AgentSession):
+    # headers = {
+    #     "Content-Type": "application/json",
+    #     "X-API-Key": f"{settings.P1_ISC_API_KEY}"
+    # }
+    headers = {
+        "Content-Type": "application/json",
+        "Authorization": f"Bearer {settings.ISC_AUTH_TOKEN}"
+    }
+    transcript = call_models.build_transcript_string(session.history.items)
+
+    res = await _request(
+        "POST",
+        f"{settings.P1_ISC_URL}/post-call-analysis",
+        headers=headers,
+        json={
+            "transcript": transcript
+        })
+    analysis = schemas.PostCallAnalysis(**res["data"])
+    logger.info(f"Post-call analysis: {analysis}")
+    await call_models.save_analysis(session.userdata.call_id, analysis)
+
