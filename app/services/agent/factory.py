@@ -34,10 +34,10 @@ async def load_agent_config(user_data, agent_id: str) -> AgentConfig:
         speed=0.75,
         volume=2.0,
         stt_provider="deepgram",
-        tools=["end_call", "ask_knowledge_base", #TODO HAZARD
-               "get_current_time", #"transfer_to_human",
-               "book_appointment", "cancel_appointment", 
-               "get_available_slots", "reschedule_appointment"],
+        # tools=["end_call", "ask_knowledge_base", #TODO HAZARD
+        #        "get_current_time", #"transfer_to_human",
+        #        "book_appointment", "cancel_appointment", 
+        #        "get_available_slots", "reschedule_appointment"],
         allow_interruptions=True,
         greeting="Hello! How can I assist you today?"
     )
