@@ -24,7 +24,7 @@ async def load_agent_config(user_data, agent_id: str) -> AgentConfig:
         agent_name="TestAgent",
         agent_id=str(agent_id),
         knowledge_base_id= "perceptyne" if agent_id == "perceptyne" else "eminence", #TODO
-        system_prompt=inbound_prompt.f_prompt+f"\nUser Data: Name: {user_data.name}, Email: {user_data.email}, Phone: {user_data.phone}\n",
+        system_prompt=inbound_prompt.omar_estate_prompt+f"\nUser Data: Name: {user_data.name}, Email: {user_data.email}, Phone: {user_data.phone}\n",
         llm_provider="groq",
         llm_model="qwen/qwen3-32b",
         max_tokens=1000,
@@ -62,9 +62,9 @@ class InboundAgent(Agent):
             # tts=deepgram.TTS(),
             tts=cartesia.TTS(
                 model="sonic-turbo",
-                # voice=config.voice_id,
-                # emotion=config.emotion,
-                # speed=config.speed,
+                voice= "e07c00bc-4134-4eae-9ea4-1a55fb45746b",#config.voice_id,
+                emotion="Excited",
+                speed=config.speed,
                 # volume=config.volume,
             ),
             turn_detection=EnglishModel(),
