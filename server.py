@@ -15,8 +15,8 @@ load_dotenv(override=True)
 
 
 # Import entrypoints to register RTC sessions
-from app.services.agent.templates.inbound_agent.entrypoint import inbound_server  # noqa: F401
-from app.services.agent.templates.outbound_agent.entrypoint import outbound_server # noqa: F401
+from app.agent.templates.inbound_agent.entrypoint import inbound_server  # noqa: F401
+from app.agent.templates.outbound_agent.entrypoint import outbound_server # noqa: F401
 
 if __name__ == "__main__":
     # Configure logging for better debugging

@@ -12,8 +12,8 @@ from livekit.agents import (metrics,
                             MetricsCollectedEvent,
                             RoomInputOptions)
 
-from app.services.agent import agent_metrics, AgentConfig, CallDetails
-from app.services.agent.factory import AgentFactory, load_agent_config
+from app.agent import agent_metrics, UserData
+from app.agent.factory.agent import AgentFactory
 from app.models import call_models
 from app.shared import schemas
 from app.shared import settings
@@ -27,13 +27,6 @@ settings = settings.get_settings()
 usage_collector = metrics.UsageCollector()
 
 #TODO Fetch from db
-@dataclass
-class UserData:
-    id: str
-    name: str
-    email: str
-    phone: str
-    call_id: str = None
 
 ud = UserData(
     id="693a6b84dc31118495e34e27",
@@ -58,8 +51,8 @@ async def inbound_entrypoint(ctx: JobContext):
     await ctx.connect(auto_subscribe=AutoSubscribe.AUDIO_ONLY)
 
     # Example: resolve from headers / room metadata / API
-    # agent_id = ctx.job.metadata
-    agent_config = await load_agent_config(ud,"eminence") #TODO HAZARD pass uer&agent ID
+    agent_id = ctx.job.metadata
+    agent_config = await AgentFactory.load_agent_config(ud,agent_id) #TODO HAZARD pass uer&agent ID
     agent_config.ctx = ctx
     session = AgentSession(preemptive_generation=True, 
                            userdata=ud,
@@ -106,8 +99,8 @@ async def inbound_entrypoint(ctx: JobContext):
         }
         
         handler = metrics_handlers.get(ev.metrics.type)
-        if handler:
-            handler(ev.metrics)
+        # if handler:
+        #     handler(ev.metrics)
     
     async def log_usage():
         summary = usage_collector.get_summary()
@@ -136,13 +129,9 @@ async def inbound_entrypoint(ctx: JobContext):
 
     
 async def post_call_analysis(session: AgentSession):
-    # headers = {
-    #     "Content-Type": "application/json",
-    #     "X-API-Key": f"{settings.P1_ISC_API_KEY}"
-    # }
     headers = {
         "Content-Type": "application/json",
-        "Authorization": f"Bearer {settings.ISC_AUTH_TOKEN}"
+        "X-API-Key": f"{settings.P1_ISC_API_KEY}"
     }
     transcript = call_models.build_transcript_string(session.history.items)
 

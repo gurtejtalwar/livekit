@@ -17,6 +17,13 @@ class LLMProvider(str, Enum):
     GROQ = "groq"
     OPENAI = "openai"
 
+@dataclass
+class UserData:
+    id: str
+    name: str
+    email: str
+    phone: str
+    call_id: str = None
 
 class CallDetails(BaseModel):
     livekit_call_id: str
@@ -28,12 +35,16 @@ class CallDetails(BaseModel):
     twilio_call_sid: Optional[str] = None
     hostname: Optional[str] = None
 
+class CallerDetails(BaseModel):
+    name: Optional[str] = None
+    phone: Optional[str] = None
+    email: Optional[str] = None
 
 class AgentConfig(BaseModel):
     user_id: str
     agent_id: str
     agent_name: str
-    knowledge_base_id: str
+    knowledge_base_id: str = ""
 
     call_details: Optional[CallDetails] = None
 

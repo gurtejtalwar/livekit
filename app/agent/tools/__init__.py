@@ -1,6 +1,6 @@
 from dataclasses import dataclass
 
-from app.services.agent import AgentConfig
+from app.agent import AgentConfig
 from .tools import (
     end_call,
     make_ask_knowledge_base_tool, 
@@ -74,7 +74,7 @@ TOOL_REGISTRY = {
 }
 
 def resolve_tools(config: AgentConfig) -> list:
-    kb = load_knowledge_base(config.agent_id)
+    kb = load_knowledge_base(config.knowledge_base_id) 
     tool_ctx = ToolContext(agent_id=config.agent_id, kb=kb)
     resolved_tools = []
     for tool_name in config.tools:

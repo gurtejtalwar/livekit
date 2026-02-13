@@ -18,9 +18,11 @@ from livekit.agents.beta.workflows import WarmTransferTask
 from livekit.agents import llm, get_job_context, RunContext
 
 from app.utils.timer import Timer
+from app.shared.settings import get_settings
 from app.utils.requests import _request
 
 load_dotenv(override=True)
+settings = get_settings()
 logger = logging.getLogger("TOOLS")
 
 class KnowledgeBase:
@@ -116,16 +118,6 @@ def embed(text):
             outputs = model(**inputs)
         return outputs.last_hidden_state.mean(dim=1).numpy()
 
-def get_text_from_indices(indices):
-    """Return the text chunks for each FAISS result index."""
-    result = []
-    for idx in indices:
-        if 0 <= idx < len(chunks):
-            result.append(chunks[idx])
-        else:
-            result.append("[INVALID INDEX]")
-    return result
-
 #TODO Deficit
 KB_CACHE={}
 MODEL_CACHE={}
@@ -140,18 +132,6 @@ with Timer("Load Embedding Model"):
         )
         MODEL_CACHE[model]=True
 
-@llm.function_tool #TODO HAZARD
-async def ask_knowledge_base(question: str):
-    """Ultra-fast retrieval with streaming context"""
-    with Timer("KB Tool Total:"):
-        with Timer("Embed Query"):
-            q_emb = embed(question)
-        with Timer("FAISS Search"):
-            dist, idx = index.search(q_emb, k=3)    # top 3 matches
-        indices = idx[0]                        # array of indices
-        matched_text = get_text_from_indices(indices)
-        context = "\n".join(matched_text)
-        return context
 
 @llm.function_tool
 async def get_current_time(input: str) -> str:
@@ -168,10 +148,10 @@ async def hangup_call(ctx: RunContext):
 
 @llm.function_tool
 async def end_call(ctx: RunContext,
-                   dummy: str = ""):
+                   reason: str = ""):
     """Use this tool when the user has signaled they wish to end the current call."""
     session = ctx.session
-    session.generate_reply(instructions="You/User have chosen to end the call.")
+    session.generate_reply(instructions="You/User have chosen to end the call. Reply with a closing statement and do not say anything after this. Then end the call.")
     await ctx.wait_for_playout() # Ensure agent finishes speaking
     job_ctx = get_job_context()
     if job_ctx:
@@ -209,6 +189,10 @@ async def book_appointment(
     Called only when the user confirms the date and time for booking a new appointment.
     Do not call this tool without confirming with the user first. 
     """
+    headers = {
+    "x-agent-secret": settings.N1_ISC_API_KEY,
+    "Content-Type": "application/json"
+    }
     payload = {
         "name": name,
         "date": date,
@@ -219,7 +203,8 @@ async def book_appointment(
 
     return await _request(
         "POST",
-        "/book-appointment",
+        f"{settings.N1_ISC_URL}/book-appointment",
+        headers=headers,
         json=payload
     )
 
@@ -229,9 +214,15 @@ async def cancel_appointment(booking_id: str):
     """
     Cancel an existing appointment using booking ID.
     """
+    headers = {
+    "x-agent-secret": settings.N1_ISC_API_KEY,
+    "Content-Type": "application/json"
+    }
+
     return await _request(
         "DELETE",
-        "/book-appointment",
+        f"{settings.N1_ISC_URL}/book-appointment",
+        headers=headers,
         params={"booking_id": booking_id}
     )
 
@@ -245,9 +236,39 @@ async def get_available_slots(
     """
     Get available appointment slots for a given agent and date.
     """
+    headers = {
+    "x-agent-secret": settings.N1_ISC_API_KEY,
+    "Content-Type": "application/json"
+    }
     result = await _request(
         "GET",
-        "/available-slot",
+        f"{settings.N1_ISC_URL}timeslot/get-voicebot-slots/{agentId}",
+        headers=headers,
+        # params={
+        #     # "agentId": agentId,
+        #     "date": date,
+        #     "status": status
+        # }
+    )
+    print("Available slots result:\n", result)
+    return result
+
+async def get_available_slots_DEPRECATED(
+    agentId: str,
+    date: str,
+    status: str = "available"
+):
+    """
+    Get available appointment slots for a given agent and date.
+    """
+    headers = {
+    "x-agent-secret": settings.N3_ISC_API_KEY,
+    "Content-Type": "application/json"
+    }
+    result = await _request(
+        "GET",
+        f"{settings.N3_ISC_URL}/available-slot",
+        headers=headers,
         params={
             # "agentId": agentId,
             "date": date,
@@ -270,6 +291,10 @@ async def reschedule_appointment(
     """
     Reschedule an existing appointment.
     """
+    headers = {
+    "x-agent-secret": settings.N1_ISC_API_KEY,
+    "Content-Type": "application/json"
+    }
     payload = {
         "booking_id": booking_id,
         "name": name,
@@ -281,7 +306,8 @@ async def reschedule_appointment(
 
     return await _request(
         "PATCH",
-        "/book-appointment",
+        f"{settings.N1_ISC_URL}/book-appointment",
+        headers=headers,
         json=payload
     )
 
@@ -298,6 +324,10 @@ async def create_crm_lead(
     Create a lead in the external CRM system.
     Call this when a user wants to be contacted by sales or provides contact details.
     """
+    headers = {
+    "x-agent-secret": settings.N1_ISC_API_KEY,
+    "Content-Type": "application/json"
+    }
     payload = {
         "firstName": first_name,
         "email": email,
@@ -308,7 +338,8 @@ async def create_crm_lead(
 
     return await _request(
         method="POST",
-        url="/api/crm/external/lead-create",
+        url=f"{settings.N1_ISC_URL}/api/crm/external/lead-create",
+        headers=headers,
         json=payload,
     )
 
