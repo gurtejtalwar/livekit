@@ -1,4 +1,5 @@
 import time
+import json
 import logging
 from bson import ObjectId
 from datetime import datetime
@@ -21,8 +22,10 @@ from mongoengine import (
 from livekit.agents import llm, AgentSession
 from livekit.agents.metrics import UsageSummary
 
-from app.services.agent import AgentConfig
+from app.shared import schemas
+from app.agent import AgentConfig
 from app.models import db
+
 
 logger = logging.getLogger(__name__)
 
@@ -74,6 +77,7 @@ class VoiceCalls(Document):
     start_time_unix_secs = IntField()
     call_duration_secs = IntField()
     message_count = IntField()
+    tools_count = IntField()
 
     # status
     status = StringField(choices=("completed", "in_progress", "failed"))
@@ -271,6 +275,11 @@ async def on_call_ended(
         if isinstance(item, llm.ChatMessage)
     ]
 
+    tool_calls = [
+        item for item in session.history.items
+        if isinstance(item, llm.FunctionCall)
+    ]   
+
     VoiceCalls.objects(
         id=session.userdata.call_id,
         status="in_progress",  # protects against double-finalization
@@ -278,6 +287,7 @@ async def on_call_ended(
         set__status="completed",
         set__call_duration_secs=time.time() - session._started_at,
         set__message_count=len(chat_messages),
+        set__tools_count=len(tool_calls),
         set__call_successful="success",
         set__transcript_summary="", #TODO analysis_raw.get("transcript_summary"),
         set__call_summary_title="", #TODO analysis_raw.get("call_summary_title"),
@@ -287,7 +297,7 @@ async def on_call_ended(
     # -------------------------
     # Build transcript objects
     # -------------------------
-    transcript_docs = build_transcript_messages(session.history.items)
+    transcript_docs = build_structured_transcript(session.history.items)
 
     # -------------------------
     # Update VoiceCallDetails
@@ -310,58 +320,80 @@ def normalize_chat_content(content) -> str | None: #TODO Move to utils
         return " ".join(str(c) for c in content if c)
     return str(content)
 
-def build_transcript_messages(raw_events: list) -> list[TranscriptMessage]:
+def build_structured_transcript(history_items: list) -> list[dict]:
     """
-    Converts raw session transcript events into MongoEngine TranscriptMessage objects.
-    Skips non-chat events (AgentHandoff, etc.)
+    Builds structured transcript with:
+    - role
+    - message
+    - function_calls (if any)
     """
 
-    transcript: list[TranscriptMessage] = []
+    transcript = []
 
-    for event in raw_events:
-        # -------------------------
-        # Filter only ChatMessage
-        # -------------------------
-        if getattr(event, "type", None) != "message":
+    # Temporary store of function calls by call_id
+    function_call_map = {}
+
+    for item in history_items:
+
+        # ------------------------
+        # Capture FunctionCall
+        # ------------------------
+        if isinstance(item, llm.FunctionCall):
+            try:
+                args = json.loads(item.arguments) if item.arguments else {}
+            except Exception:
+                args = item.arguments
+
+            function_call_map[item.call_id] = {
+                "name": item.name,
+                "arguments": args,
+                "output": None,
+                "is_error": False,
+            }
             continue
 
-        # -------------------------
-        # Normalize fields
-        # -------------------------
-        message_text = normalize_chat_content(event.content)
+        # ------------------------
+        # Capture FunctionCallOutput
+        # ------------------------
+        if isinstance(item, llm.FunctionCallOutput):
+            if item.call_id in function_call_map:
+                try:
+                    parsed_output = json.loads(item.output)
+                except Exception:
+                    parsed_output = item.output
 
-        transcript.append(
-            TranscriptMessage(
-                role="agent" if event.role == "assistant" else event.role,
-                message=message_text,
-                original_message=message_text,
-                interrupted=event.interrupted,
-                time_in_call_secs=(
-                    int(event.created_at - raw_events[0].created_at)
-                    if event.created_at and raw_events
-                    else None
-                ),
-                agent_metadata=AgentMetadata(
-                    agent_id=None,              # optional / fill if available
-                    branch_id=None,
-                    workflow_node_id=None,
-                )
-                if event.role == "assistant"
-                else None,
-                tool_calls=[],
-                tool_results=[],
-                feedback={
-                    "transcript_confidence": event.transcript_confidence
-                }
-                if event.transcript_confidence is not None
-                else None,
-                llm_override=None,
-                conversation_turn_metrics=event.metrics or {},
-                rag_retrieval_info=None,
-                llm_usage=None,
-                source_medium=None,
-            )
-        )
+                function_call_map[item.call_id]["output"] = parsed_output
+                function_call_map[item.call_id]["is_error"] = item.is_error
+            continue
+
+        # ------------------------
+        # Capture ChatMessage
+        # ------------------------
+        if isinstance(item, llm.ChatMessage):
+            role = "agent" if item.role == "assistant" else "user"
+
+            # Normalize content
+            if isinstance(item.content, list):
+                message = " ".join(p.strip() for p in item.content if p)
+            else:
+                message = str(item.content).strip()
+
+            transcript.append({
+                "role": role,
+                "message": message,
+                "tool_calls": []
+            })
+
+    # ------------------------
+    # Attach function calls to last agent message
+    # (Most frameworks call functions immediately after assistant turn)
+    # ------------------------
+    for call in function_call_map.values():
+        # attach to most recent agent message
+        for entry in reversed(transcript):
+            if entry["role"] == "agent":
+                entry["function_calls"].append(call)
+                break
 
     return transcript
 
@@ -425,13 +457,13 @@ async def save_usage_summary(call_id: str, summary: UsageSummary):
 
     call_details.save()
 
-async def save_analysis(call_id: str, analysis: Analysis):
+async def save_analysis(call_id: str, analysis: schemas.PostCallAnalysis):
     try:
         call_details: VoiceCallDetails = VoiceCallDetails.objects.get(call_id=call_id)
     except DoesNotExist:
         logger.warning(f"CallDetails not found for call_id {call_id} when saving analysis")
         return
-
+    analysis = Analysis(**analysis.model_dump())
     call_details.analysis = analysis
     call_details.save()
 
