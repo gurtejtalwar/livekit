@@ -5,6 +5,7 @@ from dataclasses import dataclass
 
 from livekit.plugins import noise_cancellation
 from livekit.agents import (metrics,
+                            function_tool,
                             JobContext,
                             AutoSubscribe,
                             AgentServer,
@@ -27,7 +28,6 @@ settings = settings.get_settings()
 usage_collector = metrics.UsageCollector()
 
 #TODO Fetch from db
-
 ud = UserData(
     id="693a6b84dc31118495e34e27",
     name="Gurtej Singh",
@@ -57,7 +57,7 @@ async def inbound_entrypoint(ctx: JobContext):
     session = AgentSession(preemptive_generation=True, 
                            userdata=ud,
                            user_away_timeout=10)
-
+    
     agent = AgentFactory.from_config(agent_config)
 
     inactivity_task: asyncio.Task | None = None
@@ -124,8 +124,8 @@ async def inbound_entrypoint(ctx: JobContext):
         ),
     )
 
-    # await session.say(agent_config.greeting)
-    await session.generate_reply(instructions="Confirm the user is connected and greet them warmly.")
+    await session.say(agent_config.greeting)
+    # await session.generate_reply(instructions="Confirm the user is connected and greet them warmly.")
 
     
 async def post_call_analysis(session: AgentSession):

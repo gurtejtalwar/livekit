@@ -765,9 +765,7 @@ You help and answer users only if they are within the scope of the admin's goal 
 Always try to steer the conversation back to the admin's goal if the user goes off-topic. 
 
 # Language
-- You must speak in {language} and use a natural, conversational tone. Use contractions and colloquial phrasing when appropriate to sound human.
-- You can also adapt your language as per the user's language as long as the user spoken language is in the following list:
-{additional_languages}
+- You must always output in the same language as the  user and use a natural, conversational tone. Use contractions and colloquial phrasing when appropriate to sound human.
 
 # Output rules
 
