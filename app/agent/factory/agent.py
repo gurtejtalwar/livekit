@@ -3,9 +3,10 @@ import asyncio
 import time
 from dataclasses import dataclass, field
 
-from livekit.agents import Agent
+from livekit.agents import Agent, llm
 from livekit.plugins import deepgram, cartesia, groq, openai, elevenlabs, assemblyai
 from livekit.plugins.turn_detector.english import EnglishModel
+from livekit.plugins.turn_detector.multilingual import MultilingualModel
 
 from app.agent import AgentConfig, CallDetails
 from app.agent.prompt import inbound as inbound_prompt
@@ -48,7 +49,8 @@ class InboundAgent(Agent):
         tools = resolve_tools(config)
         super().__init__(
             instructions=config.system_prompt,
-            stt=deepgram.STT(),
+            stt=deepgram.STT(language="multi"), #TODO can be set dynamically based on agent config
+            # stt=assemblyai.STT(model="universal-streaming-multilingual"),
             llm=groq.LLM(
                 model="openai/gpt-oss-20b",
                 tool_choice="auto",
@@ -62,13 +64,14 @@ class InboundAgent(Agent):
             # tts=elevenlabs.TTS(voice_id="FGY2WhTYpPnrIDTdsKH5"),
             # tts=deepgram.TTS(),
             tts=cartesia.TTS(
-                model="sonic-turbo",
-                voice= "e07c00bc-4134-4eae-9ea4-1a55fb45746b",#config.voice_id,
+                # language=
+                model="sonic-3",
+                # voice= "e07c00bc-4134-4eae-9ea4-1a55fb45746b",#config.voice_id,
                 emotion="Excited",
-                speed=config.speed,
+                # speed=0.5,
                 # volume=config.volume,
             ),
-            turn_detection=EnglishModel(),
+            turn_detection=MultilingualModel(),
             tools=tools,
             allow_interruptions=config.allow_interruptions,
             min_endpointing_delay=0.05,
@@ -117,11 +120,11 @@ class AgentFactory:
         return await helper.load_agent_runtime_config(agent_id, user_data)    
 
     @staticmethod
-    def from_config(cfg: AgentConfig) -> Agent: 
+    def from_config(cfg: AgentConfig) :#-> Agent: 
         stt = factory.STT.create(cfg)
         llm = factory.LLM.create(cfg)
         tts = factory.TTS.create(cfg)
-        return InboundAgent(cfg)
+        return InboundAgent(cfg), stt, llm, tts
 
 
 #TODO Data redundancy, can be fetched directly from context
@@ -165,3 +168,4 @@ async def update_config_with_caller_context(config: AgentConfig) -> AgentConfig:
         )
         
     return config
+

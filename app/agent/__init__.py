@@ -60,6 +60,8 @@ class AgentConfig(BaseModel):
     emotion: Optional[str] = "Happy"
     speed: float = 1.0
     volume: float = 1.0
+    language: Optional[str] = "English"
+    additional_languages: List[str] = field(default_factory=list)
 
     # STT
     stt_provider: STTProvider = STTProvider.DEEPGRAM
