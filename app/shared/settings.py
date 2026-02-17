@@ -22,7 +22,7 @@ class Settings(BaseSettings):
 
     # Database Configuration
     MONGO_URI: str
-    MONGO_DB: str = "itsbot-db"
+    MONGO_DB: str
 
     # ISC
     N1_ISC_URL: str
