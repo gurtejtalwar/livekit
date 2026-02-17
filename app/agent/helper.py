@@ -2,8 +2,9 @@ from bson import ObjectId
 
 from app.shared import models
 from app.agent import AgentConfig
+from app.agent.prompt import inbound
 
-def load_agent_runtime_config(agent_id: str, user_data):
+async def load_agent_runtime_config(agent_id: str, user_data):
     agent: models.VoiceAgent = models.VoiceAgent.objects(
         id=ObjectId(agent_id)).first()
     if not agent:
@@ -24,13 +25,17 @@ def load_agent_runtime_config(agent_id: str, user_data):
         if agent.agentConfig
         else ""
     )
-
     system_prompt += (
         f"\nUser Data: Name: {user_data.name}, "
         f"Email: {user_data.email}, "
         f"Phone: {user_data.phone}\n"
     )
-
+    lk_prompt = inbound.lk_prompt.format(
+        agent_name=agent.agentName,
+        admin_goal=system_prompt,
+        language=voice_doc.language if voice_doc and voice_doc.language else "English",
+        additional_languages=", ".join(voice_doc.additionalLanguages) if voice_doc and voice_doc.additionalLanguages else []
+    )
     # ---------- LLM ----------
     llm = config_doc.llm if config_doc and config_doc.llm else {}
     llm_provider = llm.get("provider", "groq")
@@ -41,7 +46,7 @@ def load_agent_runtime_config(agent_id: str, user_data):
     tts = voice_doc.tts if voice_doc and voice_doc.tts else {}
     tts_provider = tts.get("provider", "elevenlabs")
     voice_id = tts.get("voice_id", voice_doc.voiceType if voice_doc else None)
-    speed = tts.get("speed", 0.75)
+    speed = tts.get("speed", 0.5)
     volume = tts.get("volume", 2.0)
 
     # ---------- STT ----------
@@ -63,7 +68,7 @@ def load_agent_runtime_config(agent_id: str, user_data):
         agent_id=str(agent.id),
         agent_name=agent.agentName,
         knowledge_base_id=agent.knowledgeBaseId,
-        system_prompt=system_prompt,
+        system_prompt=lk_prompt,
         llm_provider=llm_provider,
         llm_model=llm_model,
         max_tokens=max_tokens,

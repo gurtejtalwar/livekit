@@ -27,9 +27,16 @@ class Settings(BaseSettings):
     # ISC
     N1_ISC_URL: str
     N1_ISC_API_KEY: str
-    ISC_AUTH_TOKEN: str
+
+    N3_ISC_URL: str
+    N3_ISC_API_KEY: str
+    
     P1_ISC_URL: str
     P1_ISC_API_KEY: str
+
+    TTS_CARTESIA_DEFAULT_VOICE_ID: str
+    TTS_ELEVENLABS_DEFAULT_VOICE_ID: str
+    LLM_GROQ_DEFAULT_MODEL: str
 
     model_config = SettingsConfigDict(env_file=".env", extra="ignore")
 

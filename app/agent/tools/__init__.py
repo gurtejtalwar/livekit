@@ -5,7 +5,6 @@ from .tools import (
     end_call,
     make_ask_knowledge_base_tool, 
     load_knowledge_base,
-    ask_knowledge_base,
     get_current_time,
     book_appointment,
     cancel_appointment,
@@ -74,7 +73,9 @@ TOOL_REGISTRY = {
 }
 
 def resolve_tools(config: AgentConfig) -> list:
-    kb = load_knowledge_base(config.knowledge_base_id) 
+    kb=None
+    if config.knowledge_base_id:
+        kb = load_knowledge_base(config.knowledge_base_id) 
     tool_ctx = ToolContext(agent_id=config.agent_id, kb=kb)
     resolved_tools = []
     for tool_name in config.tools:

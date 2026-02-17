@@ -44,7 +44,7 @@ class AgentConfig(BaseModel):
     user_id: str
     agent_id: str
     agent_name: str
-    knowledge_base_id: str = ""
+    knowledge_base_id: Optional[str] = None
 
     call_details: Optional[CallDetails] = None
 
