@@ -52,6 +52,7 @@ async def inbound_entrypoint(ctx: JobContext):
 
     # Example: resolve from headers / room metadata / API
     agent_id = ctx.job.metadata
+    print(f"Starting session with agent_id: {agent_id}")
     agent_config = await AgentFactory.load_agent_config(ud,agent_id)
     agent_config.ctx = ctx
     session = AgentSession(preemptive_generation=True, 
