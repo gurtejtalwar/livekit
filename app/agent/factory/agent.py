@@ -89,7 +89,7 @@ class InboundAgent(Agent):
             tts=cartesia.TTS(
                 # language=
                 model="sonic-turbo",
-                # voice= "e07c00bc-4134-4eae-9ea4-1a55fb45746b",#config.voice_id,
+                voice= "e07c00bc-4134-4eae-9ea4-1a55fb45746b",#config.voice_id,
                 emotion="Excited",
                 speed=0.5,
                 # volume=config.volume,
@@ -97,8 +97,8 @@ class InboundAgent(Agent):
             turn_detection=MultilingualModel(),
             tools=tools,
             allow_interruptions=config.allow_interruptions,
-            min_endpointing_delay=0.05,
-            max_endpointing_delay=0.7,
+            min_endpointing_delay=0.5,
+            max_endpointing_delay=0.8,
         )
 
         self.config = config
