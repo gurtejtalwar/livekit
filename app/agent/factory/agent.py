@@ -91,7 +91,7 @@ class InboundAgent(Agent):
                 model="sonic-3",
                 # voice= "e07c00bc-4134-4eae-9ea4-1a55fb45746b",#config.voice_id,
                 emotion="Excited",
-                speed="normal",
+                speed=0.5,
                 # volume=config.volume,
             ),
             turn_detection=MultilingualModel(),
