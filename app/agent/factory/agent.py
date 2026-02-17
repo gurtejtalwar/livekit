@@ -88,10 +88,10 @@ class InboundAgent(Agent):
             # tts=deepgram.TTS(),
             tts=cartesia.TTS(
                 # language=
-                model="sonic-3",
+                model="sonic-turbo",
                 # voice= "e07c00bc-4134-4eae-9ea4-1a55fb45746b",#config.voice_id,
                 emotion="Excited",
-                # speed=0.5,
+                speed=0.5,
                 # volume=config.volume,
             ),
             turn_detection=MultilingualModel(),
