@@ -10,7 +10,7 @@ MONGO_DB = settings.MONGO_DB
 MONGO_URI = os.getenv("MONGO_URI", "mongodb://localhost:27017/itsbot-db")
 
 connect(
-    db="itsbot-db",
+    db="itsbot-db-livekit",
     host=MONGO_URI,
     alias="default",  # this is what MongoEngine is complaining about
 )
