@@ -126,7 +126,7 @@ async def inbound_entrypoint(ctx: JobContext):
         ),
     )
 
-    await session.say(agent_config.greeting)
+    await session.say(agent_config.greeting, allow_interruptions=False)
     # await session.generate_reply(instructions="Confirm the user is connected and greet them warmly.")
 
     
