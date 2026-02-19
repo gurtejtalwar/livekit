@@ -29,12 +29,15 @@ async def load_agent_runtime_config(agent_id: str, user_data):
         f"\nUser Data: Name: {user_data.name}, "
         f"Email: {user_data.email}, "
         f"Phone: {user_data.phone}\n"
+        f"User ID: {user_data.user_id}\n"
     )
     lk_prompt = inbound.lk_prompt.format(
         agent_name=agent.agentName,
         admin_goal=system_prompt,
         language=voice_doc.language if voice_doc and voice_doc.language else "English",
-        additional_languages=", ".join(voice_doc.additionalLanguages) if voice_doc and voice_doc.additionalLanguages else []
+        additional_languages=", ".join(voice_doc.additionalLanguages) if voice_doc and voice_doc.additionalLanguages else [],
+        time=get_time_in_timezone(config_doc.timezone),
+        timezone=config_doc.timezone
     )
     # ---------- LLM ----------
     llm = config_doc.llm if config_doc and config_doc.llm else {}
@@ -64,7 +67,7 @@ async def load_agent_runtime_config(agent_id: str, user_data):
     )
 
     return AgentConfig(
-        user_id=str(user_data.id),
+        user_id=str(user_data.user_id),
         agent_id=str(agent.id),
         agent_name=agent.agentName,
         knowledge_base_id=agent.knowledgeBaseId,
@@ -81,3 +84,9 @@ async def load_agent_runtime_config(agent_id: str, user_data):
         greeting=greeting,
     )
 
+
+from zoneinfo import ZoneInfo
+from datetime import datetime
+
+def get_time_in_timezone(tz_name: str):
+    return datetime.now(ZoneInfo(tz_name))

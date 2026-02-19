@@ -7,6 +7,7 @@ import logging
 import gc
 
 import time
+from datetime import datetime
 from dotenv import load_dotenv
 from typing import Optional, List
 from pydantic import BaseModel
@@ -149,7 +150,7 @@ async def hangup_call(ctx: RunContext):
 @llm.function_tool
 async def end_call(ctx: RunContext,
                    reason: str = ""):
-    """Use this tool when the user has signaled they wish to end the current call."""
+    """Use this tool ONLY when the user has signaled they wish to end the current call."""
     session = ctx.session
     session.generate_reply(instructions="You/User have chosen to end the call. Reply with a closing statement and do not say anything after this. Then end the call.")
     await ctx.wait_for_playout() # Ensure agent finishes speaking
@@ -203,7 +204,7 @@ async def book_appointment(
 
     return await _request(
         "POST",
-        f"{settings.N1_ISC_URL}/book-appointment",
+        f"{settings.N3_ISC_URL}/book-appointment",
         headers=headers,
         json=payload
     )
@@ -221,7 +222,7 @@ async def cancel_appointment(booking_id: str):
 
     return await _request(
         "DELETE",
-        f"{settings.N1_ISC_URL}/book-appointment",
+        f"{settings.N3_ISC_URL}/book-appointment",
         headers=headers,
         params={"booking_id": booking_id}
     )
@@ -229,9 +230,8 @@ async def cancel_appointment(booking_id: str):
 #/ -- Get Available Slots Tool --/
 @llm.function_tool
 async def get_available_slots(
-    agentId: str,
-    date: str,
-    status: str = "available"
+    ctx: RunContext,
+    userId: str,
 ):
     """
     Get available appointment slots for a given agent and date.
@@ -242,13 +242,11 @@ async def get_available_slots(
     }
     result = await _request(
         "GET",
-        f"{settings.N1_ISC_URL}timeslot/get-voicebot-slots/{agentId}",
+        f"{settings.N1_ISC_URL}/timeslot/get-voicebot-slots/{userId}",
         headers=headers,
-        # params={
-        #     # "agentId": agentId,
-        #     "date": date,
-        #     "status": status
-        # }
+        params={
+            "timeZoneName": "Asia/Calcutta", #TODO HAZARD
+        }
     )
     print("Available slots result:\n", result)
     return result
@@ -282,8 +280,7 @@ async def get_available_slots_DEPRECATED(
 @llm.function_tool
 async def reschedule_appointment(
     booking_id: str,
-    name: str,
-    date: str,
+    contact_number: str,
     time: str,
     agentId: str,
     # customFields: dict | None = None
@@ -297,8 +294,7 @@ async def reschedule_appointment(
     }
     payload = {
         "booking_id": booking_id,
-        "name": name,
-        "date": date,
+        "contact_phone": contact_number,
         "time": time,
         "agentId": agentId,
         # "customFields": customFields or {}
@@ -306,7 +302,7 @@ async def reschedule_appointment(
 
     return await _request(
         "PATCH",
-        f"{settings.N1_ISC_URL}/book-appointment",
+        f"{settings.N3_ISC_URL}/book-appointment",
         headers=headers,
         json=payload
     )
@@ -355,6 +351,49 @@ WHO you're talking to (name, role, company if mentioned)
 WHY they contacted you (goal, problem, request)
 WHY a human agent is requested or needed at this point
 Brief summary in 100-200 characters from a first-person perspective"""
+
+@llm.function_tool
+async def callback_tool(agent_id: str,
+                        contact_phone: str,
+                        time: str):
+    """Use this tool to call the user back at a later time. Only use this tool if the user has explicitly requested a callback and provided a contact number, or if you have been instructed to do so by the user. Do not use this tool for any other reason.
+    """
+    headers = {
+    "x-agent-secret": settings.N1_ISC_API_KEY,
+    }
+    payload = {
+        "agentId": agent_id,
+        "contact_phone": contact_phone,
+        "time": time,
+        "current_time": datetime.now().isoformat(),
+    }
+    return await _request(
+        "POST",
+        f"{settings.N3_ISC_URL}/voice-callback",
+        headers=headers,
+        json=payload
+    )
+
+@llm.function_tool
+async def do_not_call(agent_id: str,
+                      contact_phone: str,
+                      ):
+    """Use this tool to mark that the user should not be called back. Only use this tool if the user has explicitly stated that they do not want a callback, or if you have been instructed to do so by the user. Do not use this tool for any other reason.
+    """
+    headers = {
+    "x-agent-secret": settings.N1_ISC_API_KEY,
+    }
+    payload = {
+        "agentId": agent_id,
+        "contact_phone": contact_phone,
+    }
+    
+    return await _request(
+        "POST",
+        f"{settings.N3_ISC_URL}/do-not-call",
+        headers=headers,
+        json=payload
+    )
 
 @llm.function_tool
 async def transfer_to_human(dummy: str, ctx: RunContext) -> None:

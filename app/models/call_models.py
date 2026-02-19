@@ -392,7 +392,8 @@ def build_structured_transcript(history_items: list) -> list[dict]:
         # attach to most recent agent message
         for entry in reversed(transcript):
             if entry["role"] == "agent":
-                entry["function_calls"].append(call)
+                print("Entry:\n", entry)
+                entry["tool_calls"].append(call)
                 break
 
     return transcript
@@ -431,7 +432,7 @@ async def save_usage_summary(call_id: str, summary: UsageSummary):
         logger.warning(f"CallDetails not found for call_id {call_id} when saving usage summary")
         return
 
-    call_details.usage_summary = UsageSummaryEmbedded(
+    call_details.lk_metadata.usage = UsageSummaryEmbedded(
         llm_prompt_tokens=summary.llm_prompt_tokens,
         llm_prompt_cached_tokens=summary.llm_prompt_cached_tokens,
 

@@ -29,7 +29,7 @@ usage_collector = metrics.UsageCollector()
 
 #TODO Fetch from db
 ud = UserData(
-    id="693a6b84dc31118495e34e27",
+    user_id="6992f9020296c31229cfacf0",
     name="Gurtej Singh",
     email="gurtej@gmail.com",
     phone="+917460015555"
@@ -55,9 +55,10 @@ async def inbound_entrypoint(ctx: JobContext):
     print(f"Starting session with agent_id: {agent_id}")
     agent_config = await AgentFactory.load_agent_config(ud,agent_id)
     agent_config.ctx = ctx
-    session = AgentSession(preemptive_generation=True, 
-                           userdata=ud,
-                           user_away_timeout=10)
+    session = AgentSession(
+        # preemptive_generation=True, 
+        userdata=ud,
+        user_away_timeout=10)
     
     agent = AgentFactory.from_config(agent_config)
 
@@ -100,8 +101,8 @@ async def inbound_entrypoint(ctx: JobContext):
         }
         
         handler = metrics_handlers.get(ev.metrics.type)
-        # if handler:
-        #     handler(ev.metrics)
+        if handler:
+            handler(ev.metrics)
     
     async def log_usage():
         summary = usage_collector.get_summary()

@@ -19,7 +19,7 @@ class LLMProvider(str, Enum):
 
 @dataclass
 class UserData:
-    id: str
+    user_id: str
     name: str
     email: str
     phone: str

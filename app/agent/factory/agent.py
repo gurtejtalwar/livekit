@@ -4,7 +4,7 @@ import time
 from dataclasses import dataclass, field
 
 from livekit.agents import Agent, llm
-from livekit.plugins import deepgram, cartesia, groq, openai, elevenlabs, assemblyai
+from livekit.plugins import deepgram, cartesia, groq, openai, elevenlabs, assemblyai, silero
 from livekit.plugins.turn_detector.english import EnglishModel
 from livekit.plugins.turn_detector.multilingual import MultilingualModel
 
@@ -42,6 +42,14 @@ cartesia_language_codes = {
     "de": "de-DE",
 }
 
+vad = silero.VAD.load(
+    activation_threshold=0.6,
+    prefix_padding_duration=0.5,
+    min_silence_duration=1,
+    sample_rate=8000,
+
+
+)
 async def load_agent_config(user_data, agent_id: str) -> AgentConfig:
     return await helper.load_agent_runtime_config(agent_id, user_data)
     return AgentConfig(
@@ -72,7 +80,7 @@ class InboundAgent(Agent):
         tools = resolve_tools(config)
         super().__init__(
             instructions=config.system_prompt,
-            stt=deepgram.STT(language="multi"), #TODO can be set dynamically based on agent config
+            stt=assemblyai.STT(),#language="multi"), #TODO can be set dynamically based on agent config
             # stt=assemblyai.STT(model="universal-streaming-multilingual"),
             llm=groq.LLM(
                 model="openai/gpt-oss-20b",
@@ -94,11 +102,12 @@ class InboundAgent(Agent):
                 speed=0.5,
                 # volume=config.volume,
             ),
-            turn_detection=MultilingualModel(),
+            turn_detection=EnglishModel(),
             tools=tools,
             allow_interruptions=config.allow_interruptions,
-            min_endpointing_delay=0.5,
-            max_endpointing_delay=0.8,
+            min_endpointing_delay=1,
+            max_endpointing_delay=1,
+            # vad=vad,
         )
 
         self.config = config

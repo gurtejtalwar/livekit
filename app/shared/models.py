@@ -81,6 +81,8 @@ class VoiceAgentConfig(Document):
     llm = DictField()
     tools = ListField(StringField())
 
+    timezone = StringField()
+
 class VoiceAgentIdentity(Document):
     meta = {
         "collection": "voice-identity",
@@ -143,6 +145,7 @@ class VoiceAgentVoiceConfig(Document):
 
     tts = DictField()
     stt = DictField()
+
 
 class VoiceAgentEscalation(Document):
     meta = {
