@@ -20,6 +20,8 @@ class VoiceAgent(Document):
 
     type = StringField(default="voice")
     providerType = StringField(required=True, default="elevenlabs")
+    status = StringField(default="deploying")
+    isActive = BooleanField(default=True)
 
     knowledgeBaseId = StringField()
     resourceCentreName = StringField()
@@ -33,7 +35,6 @@ class VoiceAgent(Document):
     livekitAgentId = StringField()
     livekitProjectSubdomain = StringField()
 
-    status = StringField(default="deploying")
 
     inboundTrunkId = StringField()
     outboundTrunkId = StringField()
@@ -48,14 +49,13 @@ class VoiceAgent(Document):
     deployment = DictField(default=dict)
     metrics = DictField(default=dict)
 
-    isActive = BooleanField(default=True)
     lastError = StringField()
 
     lastUpdatedTypes = ListField(StringField(), default=list)
 
-class VoiceAgentConfig(Document):
+class VoiceAgentConfigLivekit(Document):
     meta = {
-        "collection": "voice-agent-config",
+        "collection": "voice-agent-config-livekit",
         "indexes": ["userId", "agentId"],
         "strict": False  # Allow mongoose extra fields
 
@@ -64,9 +64,27 @@ class VoiceAgentConfig(Document):
     userId = ObjectIdField(required=True)
     agentId = ObjectIdField(required=True)
 
+    voiceType = StringField()
+    language = StringField()
+    autoSwitchLanguage = BooleanField()
+
+    tone = StringField()
+    speakingSpeed = FloatField()
+
+    stability = FloatField()
+    similarity = FloatField()
+
+    emotionAwareResponse = BooleanField()
+    callerMemory = BooleanField()
+
+    additionalLanguages = ListField(StringField())
+
+    tts = DictField()
+    stt = DictField()
+
     purposes = ListField(StringField())
     welcomeMessage = StringField()
-
+    isWelcomeMessageEdited = BooleanField()
     gptCustomizationEnabled = BooleanField()
     customErrorMessageEnabled = BooleanField()
     customErrorMessage = StringField()
@@ -128,23 +146,6 @@ class VoiceAgentVoiceConfig(Document):
     userId = ObjectIdField(required=True)
     agentId = ObjectIdField(required=True)
 
-    voiceType = StringField()
-    language = StringField()
-    autoSwitchLanguage = BooleanField()
-
-    tone = StringField()
-    speakingSpeed = FloatField()
-
-    stability = FloatField()
-    similarity = FloatField()
-
-    emotionAwareResponse = BooleanField()
-    callerMemory = BooleanField()
-
-    additionalLanguages = ListField(StringField())
-
-    tts = DictField()
-    stt = DictField()
 
 
 class VoiceAgentEscalation(Document):

@@ -166,9 +166,25 @@ class SipMetadata(EmbeddedDocument):
     local_participant_sid = StringField()
     remote_participant_sid = StringField()
 
+class STTModel(EmbeddedDocument):
+    model_provider = StringField()
+    model_name = StringField()
+class LLMModel(EmbeddedDocument):
+    model_provider = StringField()
+    model_name = StringField()
+class TTSModel(EmbeddedDocument):
+    model_provider = StringField()
+    model_name = StringField()
+    voice_id = StringField()
+
+class Models(EmbeddedDocument):
+    stt = EmbeddedDocumentField(STTModel)
+    llm = EmbeddedDocumentField(LLMModel)
+    tts = EmbeddedDocumentField(TTSModel)
 class LivekitMetadata(EmbeddedDocument):
     sip = EmbeddedDocumentField(SipMetadata)
     usage = EmbeddedDocumentField(UsageSummaryEmbedded)
+    models  = EmbeddedDocumentField(Models)
 
 class Analysis(EmbeddedDocument):
     intent = StringField()
