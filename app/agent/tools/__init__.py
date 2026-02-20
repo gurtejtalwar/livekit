@@ -15,7 +15,6 @@ from .tools import (
     do_not_call,
     detected_voicemail
 )
-from .import utility_tools
 
 # TOOL_REGISTRY = {
 #     "end_call": end_call,
