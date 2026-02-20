@@ -105,8 +105,8 @@ class InboundAgent(Agent):
             turn_detection=EnglishModel(),
             tools=tools,
             allow_interruptions=config.allow_interruptions,
-            min_endpointing_delay=1,
-            max_endpointing_delay=1,
+            min_endpointing_delay=0.6,
+            max_endpointing_delay=0.7,
             # vad=vad,
         )
 
