@@ -353,7 +353,7 @@ WHY a human agent is requested or needed at this point
 Brief summary in 100-200 characters from a first-person perspective"""
 
 @llm.function_tool
-async def callback_tool(agent_id: str,
+async def call_back(agent_id: str,
                         contact_phone: str,
                         time: str):
     """Use this tool to call the user back at a later time. Only use this tool if the user has explicitly requested a callback and provided a contact number, or if you have been instructed to do so by the user. Do not use this tool for any other reason.

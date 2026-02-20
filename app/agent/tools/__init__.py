@@ -11,8 +11,11 @@ from .tools import (
     get_available_slots,
     reschedule_appointment,
     transfer_to_human,
+    call_back,
+    do_not_call,
     detected_voicemail
 )
+from .import utility_tools
 
 # TOOL_REGISTRY = {
 #     "end_call": end_call,
@@ -59,6 +62,24 @@ def resolve_transfer_to_human(ctx: ToolContext):
 def resolve_detected_voicemail(ctx: ToolContext):
     return detected_voicemail
 
+def resolve_call_back(ctx: ToolContext):
+    return call_back
+
+def resolve_do_not_call(ctx: ToolContext):
+    return do_not_call
+
+
+
+# def resolve_utility_switch_to_english(ctx: ToolContext):
+#     return utility_tools.switch_to_english
+# def resolve_utility_switch_to_spanish(ctx: ToolContext):
+#     return utility_tools.switch_to_spanish
+# def resolve_utility_switch_to_french(ctx: ToolContext):
+#     return utility_tools.switch_to_french
+# def resolve_utility_switch_to_german(ctx: ToolContext):
+#     return utility_tools.switch_to_german
+# def resolve_utility_switch_to_italian(ctx: ToolContext):
+#     return utility_tools.switch_to_italian
 
 TOOL_REGISTRY = {
     "ask_knowledge_base": resolve_ask_knowledge_base,
@@ -69,7 +90,15 @@ TOOL_REGISTRY = {
     "reschedule_appointment": resolve_reschedule_appointment,
     "end_call": resolve_end_call,
     "transfer_to_human": resolve_transfer_to_human,
+    "call_back": resolve_call_back,
+    "do_not_call": resolve_do_not_call,
     "detected_voicemail": detected_voicemail,
+#     "utility_switch_to_english": resolve_utility_switch_to_english, #TODO DB State Maintain from FE
+#     "utility_switch_to_spanish": resolve_utility_switch_to_spanish, #TODO DB State Maintain from FE
+#     "utility_switch_to_french": resolve_utility_switch_to_french, #TODO DB State Maintain from FE
+#     "utility_switch_to_german": resolve_utility_switch_to_german, #TODO DB State Maintain from FE
+#     "utility_switch_to_italian": resolve_utility_switch_to_italian #TODO DB State Maintain from FE
+# 
 }
 
 def resolve_tools(config: AgentConfig) -> list:
@@ -78,6 +107,7 @@ def resolve_tools(config: AgentConfig) -> list:
         kb = load_knowledge_base(config.knowledge_base_id) 
     tool_ctx = ToolContext(agent_id=config.agent_id, kb=kb)
     resolved_tools = []
+    # config.tools.extend([name for name in TOOL_REGISTRY.keys() if name.startswith("utility_") and name not in config.tools]) 
     for tool_name in config.tools:
         resolver = TOOL_REGISTRY.get(tool_name)
         if not resolver:
