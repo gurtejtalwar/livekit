@@ -97,7 +97,7 @@ class InboundAgent(Agent):
             tts=cartesia.TTS(
                 # language=
                 model="sonic-turbo",
-                voice= "e07c00bc-4134-4eae-9ea4-1a55fb45746b",#config.voice_id,
+                voice= config.voice_id,#config.voice_id,
                 emotion="Excited",
                 speed=0.5,
                 # volume=config.volume,
