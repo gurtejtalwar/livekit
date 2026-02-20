@@ -162,7 +162,7 @@ async def end_call(ctx: RunContext,
         )
 
 @llm.function_tool
-async def detected_voicemail(ctx: RunContext, dummy: str):
+async def detected_voicemail(ctx: RunContext, dummy: str=""):
     """Call this tool if you have detected a voicemail system, AFTER hearing the voicemail greeting"""
     await ctx.session.generate_reply(
         instructions="Leave a voicemail message letting the user know you'll call back later."
