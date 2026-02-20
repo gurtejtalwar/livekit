@@ -56,7 +56,7 @@ async def inbound_entrypoint(ctx: JobContext):
     agent_config = await AgentFactory.load_agent_config(ud,agent_id)
     agent_config.ctx = ctx
     session = AgentSession(
-        # preemptive_generation=True, 
+        preemptive_generation=True, 
         userdata=ud,
         user_away_timeout=10)
     
