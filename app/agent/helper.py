@@ -10,7 +10,7 @@ async def load_agent_runtime_config(agent_id: str, user_data):
     if not agent:
         raise ValueError("Agent not found")
 
-    config_doc: models.VoiceAgentConfig = models.VoiceAgentConfig.objects(
+    config_doc: models.VoiceAgentConfigLivekit = models.VoiceAgentConfigLivekit.objects(
         agentId=agent.id).first()
     voice_doc: models.VoiceAgentVoiceConfig = models.VoiceAgentVoiceConfig.objects(
         agentId=agent.id).first()
@@ -34,8 +34,8 @@ async def load_agent_runtime_config(agent_id: str, user_data):
     lk_prompt = inbound.lk_prompt.format(
         agent_name=agent.agentName,
         admin_goal=system_prompt,
-        language=voice_doc.language if voice_doc and voice_doc.language else "English",
-        additional_languages=", ".join(voice_doc.additionalLanguages) if voice_doc and voice_doc.additionalLanguages else [],
+        language=config_doc.language if config_doc and config_doc.language else "English",
+        additional_languages=", ".join(config_doc.additionalLanguages) if config_doc and config_doc.additionalLanguages else [],
         time=get_time_in_timezone(config_doc.timezone),
         timezone=config_doc.timezone
     )
@@ -46,14 +46,14 @@ async def load_agent_runtime_config(agent_id: str, user_data):
     max_tokens = llm.get("max_tokens", 1000)
 
     # ---------- TTS ----------
-    tts = voice_doc.tts if voice_doc and voice_doc.tts else {}
+    tts = config_doc.tts if config_doc and config_doc.tts else {}
     tts_provider = tts.get("provider", "elevenlabs")
-    voice_id = tts.get("voice_id", voice_doc.voiceType if voice_doc else None)
+    voice_id = tts.get("voice_id", config_doc.voiceType if config_doc else None)
     speed = tts.get("speed", 0.5)
     volume = tts.get("volume", 2.0)
 
     # ---------- STT ----------
-    stt = voice_doc.stt if voice_doc and voice_doc.stt else {}
+    stt = config_doc.stt if config_doc and config_doc.stt else {}
     stt_provider = stt.get("provider", "deepgram")
 
     # ---------- TOOLS ----------
