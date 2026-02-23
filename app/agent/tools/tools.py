@@ -195,10 +195,10 @@ async def book_appointment(
     "Content-Type": "application/json"
     }
     payload = {
-        "name": name,
+        "caller_name": name,
         "date": date,
         "time": time,
-        "agentId": "695254c6414ceece8c926513",
+        "agentId": agentId,
         "customFields": customFields or {}
     }
 
@@ -354,8 +354,9 @@ Brief summary in 100-200 characters from a first-person perspective"""
 
 @llm.function_tool
 async def call_back(agent_id: str,
-                        contact_phone: str,
-                        time: str):
+                    contact_phone: str,
+                    time: str,
+                    timezone: str):
     """Use this tool to call the user back at a later time. Only use this tool if the user has explicitly requested a callback and provided a contact number, or if you have been instructed to do so by the user. Do not use this tool for any other reason.
     """
     headers = {
@@ -365,7 +366,7 @@ async def call_back(agent_id: str,
         "agentId": agent_id,
         "contact_phone": contact_phone,
         "time": time,
-        "current_time": datetime.now().isoformat(),
+        "timezone": timezone
     }
     return await _request(
         "POST",
@@ -394,7 +395,6 @@ async def do_not_call(agent_id: str,
         headers=headers,
         json=payload
     )
-
 @llm.function_tool
 async def transfer_to_human(dummy: str, ctx: RunContext) -> None:
     """Called when the user asks to speak to a human agent. This will put the user on

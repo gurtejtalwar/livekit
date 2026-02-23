@@ -3,8 +3,9 @@ from bson import ObjectId
 from app.shared import models
 from app.agent import AgentConfig
 from app.agent.prompt import inbound
+from app.agent import UserData
 
-async def load_agent_runtime_config(agent_id: str, user_data):
+async def load_agent_runtime_config(agent_id: str, user_data: UserData):
     agent: models.VoiceAgent = models.VoiceAgent.objects(
         id=ObjectId(agent_id)).first()
     if not agent:
@@ -26,10 +27,14 @@ async def load_agent_runtime_config(agent_id: str, user_data):
         else ""
     )
     system_prompt += (
-        f"\nUser Data: Name: {user_data.name}, "
-        f"Email: {user_data.email}, "
-        f"Phone: {user_data.phone}\n"
-        f"User ID: {user_data.user_id}\n"
+        f"\nUser Data: \n"
+        f"Caller Name: {user_data.name}\n "
+        f"Caller Email: {user_data.email}\n "
+        f"Caller Phone: {user_data.phone}\n"
+        f"Agent ID: {user_data.agent_id}\n"
+        f"Caller ID: {user_data.user_id}\n"
+        f"Caller Current Time: {user_data.user_current_time}\n"
+        f"Caller Timezone: {user_data.user_timezone}\n"
     )
     lk_prompt = inbound.lk_prompt.format(
         agent_name=agent.agentName,

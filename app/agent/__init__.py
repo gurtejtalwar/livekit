@@ -23,6 +23,9 @@ class UserData:
     name: str
     email: str
     phone: str
+    agent_id: str = ""
+    user_timezone: str = ""
+    user_current_time: str = ""
     call_id: str = None
 
 class CallDetails(BaseModel):

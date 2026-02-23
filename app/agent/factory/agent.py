@@ -1,7 +1,9 @@
 import logging
-import asyncio
-import time
 from dataclasses import dataclass, field
+from phonenumbers import timezone
+from datetime import datetime
+import pytz
+import phonenumbers
 
 from livekit.agents import Agent, llm
 from livekit.plugins import deepgram, cartesia, groq, openai, elevenlabs, assemblyai, silero
@@ -47,33 +49,7 @@ vad = silero.VAD.load(
     prefix_padding_duration=0.5,
     min_silence_duration=1,
     sample_rate=8000,
-
-
 )
-async def load_agent_config(user_data, agent_id: str) -> AgentConfig:
-    return await helper.load_agent_runtime_config(agent_id, user_data)
-    return AgentConfig(
-        user_id=str(user_data.id),
-        agent_name="TestAgent",
-        agent_id=str(agent_id),
-        knowledge_base_id= "perceptyne" if agent_id == "perceptyne" else "eminence", #TODO
-        system_prompt=inbound_prompt.sara_health+f"\nUser Data: Name: {user_data.name}, Email: {user_data.email}, Phone: {user_data.phone}\n",
-        llm_provider="groq",
-        llm_model="qwen/qwen3-32b",
-        max_tokens=1000,
-        tts_provider="elevenlabs",
-        voice_id="FGY2WhTYpPnrIDTdsKH5",#"820a3788-2b37-4d21-847a-b65d8a68c99a",
-        # emotion="Determined",
-        speed=0.75,
-        volume=2.0,
-        stt_provider="deepgram",
-        tools=["end_call", "ask_knowledge_base", #TODO HAZARD
-               "get_current_time", #"transfer_to_human",
-               "book_appointment", "cancel_appointment", 
-               "get_available_slots", "reschedule_appointment"],
-        allow_interruptions=True,
-        greeting="Hello! How can I assist you today?"
-    )
 
 class InboundAgent(Agent):
     def __init__(self, config: AgentConfig):
@@ -203,6 +179,31 @@ class AgentFactory:
         tts = factory.TTS.create(cfg)
         return InboundAgent(cfg)
 
+    @staticmethod
+    async def get_time_from_phone(phone_number: str):
+        try:
+            # Parse number
+            parsed_number = phonenumbers.parse(phone_number)
+
+            # Get timezone(s)
+            timezones = timezone.time_zones_for_number(parsed_number)
+
+            if not timezones:
+                return "Timezone not found"
+
+            # Use first timezone (some countries have multiple)
+            tz = pytz.timezone(timezones[0])
+
+            # Get current time
+            current_time = datetime.now(tz)
+
+            return {
+                "timezone": timezones[0],
+                "current_time": current_time.strftime("%Y-%m-%d %H:%M:%S")
+            }
+
+        except Exception as e:
+            return f"Error: {str(e)}"
 
 #TODO Data redundancy, can be fetched directly from context
 async def update_config_with_caller_context(config: AgentConfig) -> AgentConfig:
