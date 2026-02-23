@@ -56,7 +56,7 @@ class InboundAgent(Agent):
         tools = resolve_tools(config)
         super().__init__(
             instructions=config.system_prompt,
-            stt=assemblyai.STT(),#language="multi"), #TODO can be set dynamically based on agent config
+            stt=deepgram.STT(),#language="multi"), #TODO can be set dynamically based on agent config
             # stt=assemblyai.STT(model="universal-streaming-multilingual"),
             llm=groq.LLM(
                 model="openai/gpt-oss-20b",
