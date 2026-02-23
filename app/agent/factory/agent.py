@@ -56,7 +56,7 @@ class InboundAgent(Agent):
         tools = resolve_tools(config)
         super().__init__(
             instructions=config.system_prompt,
-            stt=deepgram.STT(),#language="multi"), #TODO can be set dynamically based on agent config
+            stt=deepgram.STTv2(),#language="multi"), #TODO can be set dynamically based on agent config
             # stt=assemblyai.STT(model="universal-streaming-multilingual"),
             llm=groq.LLM(
                 model="openai/gpt-oss-20b",
@@ -83,6 +83,7 @@ class InboundAgent(Agent):
             allow_interruptions=config.allow_interruptions,
             min_endpointing_delay=0.2,
             max_endpointing_delay=3,
+            min_consecutive_speech_delay=0.4
             # vad=vad,
         )
 
