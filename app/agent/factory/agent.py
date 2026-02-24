@@ -74,7 +74,7 @@ class InboundAgent(Agent):
                 # language=
                 model="sonic-turbo",
                 voice= config.voice_id,#config.voice_id,
-                emotion="Excited",
+                emotion="Confident",
                 speed=0.5,
                 # volume=config.volume,
             ),
