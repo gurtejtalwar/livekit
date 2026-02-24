@@ -19,6 +19,7 @@ from app.models import call_models
 from app.shared import schemas
 from app.shared import settings
 from app.utils.requests import _request
+from app.utils.audio import SpeexAudioInput
 
 inbound_server = AgentServer()
 
@@ -130,6 +131,7 @@ async def inbound_entrypoint(ctx: JobContext):
     )
 
     await session.say(agent_config.greeting, allow_interruptions=False)
+    session.input.audio = SpeexAudioInput(session.input.audio)
     # await session.generate_reply(instructions="Confirm the user is connected and greet them warmly.")
 
     
