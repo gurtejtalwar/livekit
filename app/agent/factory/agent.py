@@ -83,7 +83,8 @@ class InboundAgent(Agent):
             allow_interruptions=config.allow_interruptions,
             min_endpointing_delay=0.2,
             max_endpointing_delay=3,
-            min_consecutive_speech_delay=0.4
+            min_consecutive_speech_delay=0.4,
+            use_tts_aligned_transcript=True
             # vad=vad,
         )
 
