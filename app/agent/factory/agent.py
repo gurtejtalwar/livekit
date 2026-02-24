@@ -59,7 +59,7 @@ class InboundAgent(Agent):
             stt=deepgram.STTv2(),#language="multi"), #TODO can be set dynamically based on agent config
             # stt=assemblyai.STT(model="universal-streaming-multilingual"),
             llm=groq.LLM(
-                model="qwen/qwen3-32b",
+                model="openai/gpt-oss-20b",
                 tool_choice="auto",
                 max_completion_tokens=config.max_tokens,
                 ),
