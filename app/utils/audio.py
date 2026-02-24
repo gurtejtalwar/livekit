@@ -1,8 +1,8 @@
 from livekit import rtc, agents
 from pyspeex_noise import AudioProcessor
 
-class SpeexAudioInput(agents.voice.AudioInput):
-    def __init__(self, original_input: agents.voice.AudioInput):
+class SpeexAudioInput(agents.voice.io.AudioInput):
+    def __init__(self, original_input: agents.voice.io.AudioInput):
         super().__init__()
         self._original_input = original_input
         
