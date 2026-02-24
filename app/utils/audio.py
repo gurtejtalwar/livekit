@@ -1,30 +1,40 @@
-from livekit import rtc, agents
+from livekit.agents.voice import io as voice_io
+from livekit import rtc
 from pyspeex_noise import AudioProcessor
 
-class SpeexAudioInput(agents.voice.io.AudioInput):
-    def __init__(self, original_input: agents.voice.io.AudioInput):
-        super().__init__()
+class SpeexAudioInput(voice_io.AudioInput):
+    def __init__(self, original_input: voice_io.AudioInput):
+        # The 'label' is now a required keyword-only argument in newer SDKs
+        super().__init__(label="speex_noise_filter")
+        
         self._original_input = original_input
         
-        # 160 samples = 10ms at 16kHz
-        self._frame_size = 160 
-        
-        # auto_gain: 0 to 32768, noise_suppression: dB (e.g. -30)
+        # Speex setup
+        self._sample_rate = 16000
+        self._frame_size = 160  # 10ms at 16kHz
         self._processor = AudioProcessor(auto_gain=2000, noise_suppression=-30)
         self._buffer = bytearray()
+        
+        # Resampler: Most rooms are 48kHz, Speex needs 16kHz
+        self._resampler = rtc.AudioResampler(
+            source_sample_rate=48000, 
+            target_sample_rate=16000
+        )
 
     async def __anext__(self) -> rtc.AudioFrame:
-        # We need exactly 320 bytes (160 samples * 2 bytes for int16)
         while len(self._buffer) < (self._frame_size * 2):
             upstream_frame = await self._original_input.__anext__()
-            self._buffer.extend(upstream_frame.data)
+            
+            # Convert to 16kHz
+            resampled_frames = self._resampler.push(upstream_frame)
+            for f in resampled_frames:
+                self._buffer.extend(f.data)
 
-        # Slice out the 10ms chunk
+        # Slice 10ms
         to_process = self._buffer[:self._frame_size * 2]
         self._buffer = self._buffer[self._frame_size * 2:]
 
-        # Apply the Speex DSP magic
-        # process_10ms returns the cleaned bytes
+        # Clean with Speex
         clean_bytes = self._processor.process_10ms(bytes(to_process))
 
         return rtc.AudioFrame(
