@@ -1,6 +1,6 @@
 from dataclasses import dataclass
 
-from app.agent import AgentConfig
+from app.agents import AgentConfig
 from .tools import (
     end_call,
     make_ask_knowledge_base_tool, 

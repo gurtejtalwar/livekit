@@ -10,13 +10,13 @@ from livekit.plugins import deepgram, cartesia, groq, openai, elevenlabs, assemb
 from livekit.plugins.turn_detector.english import EnglishModel
 from livekit.plugins.turn_detector.multilingual import MultilingualModel
 
-from app.agent import AgentConfig, CallDetails
-from app.agent.prompt import inbound as inbound_prompt
-from app.agent.tools import resolve_tools
+from app.agents import AgentConfig, CallDetails
+from app.agents.prompt import inbound as inbound_prompt
+from app.agents.tools import resolve_tools
 from app.models import call_models
 from app.shared import schemas
-from app.agent import helper
-from app.agent import factory
+from app.agents import helper
+from app.agents import factory
 
 logger = logging.getLogger("factory")
 

@@ -13,8 +13,8 @@ from livekit.agents import (metrics,
                             MetricsCollectedEvent,
                             RoomInputOptions)
 
-from app.agent import agent_metrics, UserData
-from app.agent.factory.agent import AgentFactory
+from app.agents import agent_metrics, UserData
+from app.agents.factory.agent import AgentFactory
 from app.models import call_models
 from app.shared import schemas
 from app.shared import settings

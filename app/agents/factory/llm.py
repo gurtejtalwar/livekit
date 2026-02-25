@@ -1,6 +1,6 @@
 from livekit.plugins import groq
 
-from app.agent import AgentConfig
+from app.agents import AgentConfig
 
 class LLM:
 

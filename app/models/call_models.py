@@ -23,7 +23,7 @@ from livekit.agents import llm, AgentSession
 from livekit.agents.metrics import UsageSummary
 
 from app.shared import schemas
-from app.agent import AgentConfig
+from app.agents import AgentConfig
 from app.models import db
 
 

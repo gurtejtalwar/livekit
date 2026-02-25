@@ -1,6 +1,6 @@
 from livekit.plugins import deepgram, assemblyai
 
-from app.agent import AgentConfig
+from app.agents import AgentConfig
 
 class STT:
 

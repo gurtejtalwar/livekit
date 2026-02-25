@@ -15,12 +15,12 @@ from optimum.onnxruntime import ORTModelForFeatureExtraction
 from transformers import AutoTokenizer
 
 from livekit import api
-from livekit.agents.beta.workflows import WarmTransferTask
 from livekit.agents import llm, get_job_context, RunContext
 
 from app.utils.timer import Timer
 from app.shared.settings import get_settings
 from app.utils.requests import _request
+from app.agents.workflows import WarmTransferTask
 
 load_dotenv(override=True)
 settings = get_settings()
@@ -408,7 +408,6 @@ async def transfer_to_human(dummy: str, ctx: RunContext) -> None:
     - Assistant: Yes of course.
     ----
     """
-    job_ctx = get_job_context()
     logger.info("tool called to transfer to human")
     await ctx.session.say(
         "Please hold while I connect you to a human agent.", allow_interruptions=False
@@ -425,6 +424,9 @@ async def transfer_to_human(dummy: str, ctx: RunContext) -> None:
             # add extra instructions for summarization
             # you can also customize the entire instructions by overriding the `get_instructions` method
             extra_instructions=SUMMARY_INSTRUCTIONS,
+            stt=ctx.session._agent.stt,
+            llm=ctx.session._agent.llm,
+            tts=ctx.session._agent.tts,
         )
     except llm.ToolError as e:
         logger.error(f"failed to transfer to supervisor with tool error: {e}")

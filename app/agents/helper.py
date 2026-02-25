@@ -1,9 +1,9 @@
 from bson import ObjectId
 
 from app.shared import models
-from app.agent import AgentConfig
-from app.agent.prompt import inbound
-from app.agent import UserData
+from app.agents import AgentConfig
+from app.agents.prompt import inbound
+from app.agents import UserData
 
 async def load_agent_runtime_config(agent_id: str, user_data: UserData):
     agent: models.VoiceAgent = models.VoiceAgent.objects(
