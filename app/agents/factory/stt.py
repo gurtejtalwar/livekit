@@ -5,7 +5,9 @@ from app.agents import AgentConfig
 class STT:
 
     _providers = {
-        "deepgram": lambda cfg: deepgram.STT(),
+        "deepgram": lambda cfg: deepgram.STTv2(
+            model=cfg.model
+        ),
         "assemblyai": lambda cfg: assemblyai.STT(),
     }
 
