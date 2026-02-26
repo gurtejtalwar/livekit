@@ -169,7 +169,7 @@ class AgentFactory:
             stt=stt,
             llm=llm,
             tts=tts,
-            cfg=cfg)
+            config=cfg)
 
     @staticmethod
     async def get_time_from_phone(phone_number: str):
