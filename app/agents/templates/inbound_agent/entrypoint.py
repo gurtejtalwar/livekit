@@ -1,5 +1,6 @@
 import asyncio
 import logging
+import json
 
 from dataclasses import dataclass
 
@@ -51,7 +52,9 @@ async def inbound_entrypoint(ctx: JobContext):
     await ctx.connect(auto_subscribe=AutoSubscribe.AUDIO_ONLY)
 
     # Example: resolve from headers / room metadata / API
-    agent_id = ctx.job.metadata
+    metadata = json.loads(ctx.job.metadata)
+    agent_id = metadata["agent_id"]
+    call_type = metadata["call_type"]
     ud.agent_id = agent_id
     print(f"Starting session with agent_id: {agent_id}")
     remote_participant = await ctx.wait_for_participant()
@@ -128,7 +131,7 @@ async def inbound_entrypoint(ctx: JobContext):
             close_on_disconnect=True,
         ),
     )
-
+    await ctx.wait_for_participant()
     await session.say(agent_config.greeting, allow_interruptions=False)
     # await session.generate_reply(instructions="Confirm the user is connected and greet them warmly.")
 
