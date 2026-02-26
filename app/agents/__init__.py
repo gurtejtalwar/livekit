@@ -69,10 +69,9 @@ class AgentConfig(BaseModel):
 
     system_prompt: str
 
-    # LLM
+    stt: STTConfig
     llm: LLMConfig
     tts: TTSConfig
-    stt: STTConfig
 
     language: Optional[str] = "English"
     additional_languages: List[str] = field(default_factory=list)

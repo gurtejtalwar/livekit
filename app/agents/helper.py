@@ -95,7 +95,7 @@ async def load_agent_runtime_config(agent_id: str, user_data: UserData):
             voice_id=tts_voice_id,
             speed=tts_speed,
             volume=tts_volume,
-            emotion=tts.emotion
+            emotion=tts_emotion
         ),
         tools=tools,
         greeting=greeting,
