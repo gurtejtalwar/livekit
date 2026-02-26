@@ -57,6 +57,7 @@ class TTSConfig(ModelBase):
     emotion: str
     speed: str
     volume: str
+    emotion: str
 
 class AgentConfig(BaseModel):
     user_id: str
