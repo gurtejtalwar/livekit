@@ -52,32 +52,18 @@ vad = silero.VAD.load(
 )
 
 class InboundAgent(Agent):
-    def __init__(self, config: AgentConfig):
+    def __init__(self,
+                 stt,
+                 llm,
+                 tts,
+                 config: AgentConfig):
         tools = resolve_tools(config)
         super().__init__(
             instructions=config.system_prompt,
-            stt=deepgram.STTv2(),#language="multi"), #TODO can be set dynamically based on agent config
+            stt=stt,#language="multi"), #TODO can be set dynamically based on agent config
             # stt=assemblyai.STT(model="universal-streaming-multilingual"),
-            llm=groq.LLM(
-                model="openai/gpt-oss-20b",
-                tool_choice="auto",
-                max_completion_tokens=config.max_tokens,
-                ),
-            # openai.LLM(
-            #     model="gpt-5.1",
-            #     max_completion_tokens=config.max_tokens,
-            # ),
-
-            # tts=elevenlabs.TTS(voice_id="FGY2WhTYpPnrIDTdsKH5"),
-            # tts=deepgram.TTS(),
-            tts=cartesia.TTS(
-                # language=
-                model="sonic-turbo",
-                voice= config.voice_id,#config.voice_id,
-                emotion="Happy",
-                speed="slowest",
-                # volume=config.volume,
-            ),
+            llm=llm,
+            tts=tts,
             turn_detection=EnglishModel(),
             tools=tools,
             allow_interruptions=config.allow_interruptions,
@@ -179,7 +165,11 @@ class AgentFactory:
         stt = factory.STT.create(cfg)
         llm = factory.LLM.create(cfg)
         tts = factory.TTS.create(cfg)
-        return InboundAgent(cfg)
+        return InboundAgent(
+            stt=stt,
+            llm=llm,
+            tts=tts,
+            cfg=cfg)
 
     @staticmethod
     async def get_time_from_phone(phone_number: str):
