@@ -1,7 +1,7 @@
 from bson import ObjectId
 
 from app.shared import models
-from app.agents import AgentConfig
+from app import agents
 from app.agents.prompt import inbound
 from app.agents import UserData
 
@@ -48,18 +48,21 @@ async def load_agent_runtime_config(agent_id: str, user_data: UserData):
     llm = config_doc.llm if config_doc and config_doc.llm else {}
     llm_provider = llm.get("provider", "groq")
     llm_model = llm.get("model", "qwen/qwen3-32b")
-    max_tokens = llm.get("max_tokens", 1000)
+    llm_max_tokens = llm.get("max_tokens", 1000)
 
     # ---------- TTS ----------
     tts = config_doc.tts if config_doc and config_doc.tts else {}
     tts_provider = tts.get("provider", "elevenlabs")
-    voice_id = tts.get("voice_id", config_doc.voiceType if config_doc else None)
-    speed = tts.get("speed", 0.5)
-    volume = tts.get("volume", 2.0)
+    tts_model = tts.get("model", "elevenlabs")
+    tts_voice_id = tts.get("voice_id", config_doc.voiceType if config_doc else None)
+    tts_speed = tts.get("speed", 0.5)
+    tts_volume = tts.get("volume", 2.0)
+    tts_emotion = tts.get("emotion", "Happy")
 
     # ---------- STT ----------
     stt = config_doc.stt if config_doc and config_doc.stt else {}
     stt_provider = stt.get("provider", "deepgram")
+    stt_model = stt.get("model", "flux-general-en")
 
     # ---------- TOOLS ----------
     tools = config_doc.tools if config_doc and config_doc.tools else []
@@ -71,20 +74,28 @@ async def load_agent_runtime_config(agent_id: str, user_data: UserData):
         else "Hello! How can I assist you today?"
     )
 
-    return AgentConfig(
+    return agents.AgentConfig(
         user_id=str(user_data.user_id),
         agent_id=str(agent.id),
         agent_name=agent.agentName,
         knowledge_base_id=agent.knowledgeBaseId,
         system_prompt=lk_prompt,
-        llm_provider=llm_provider,
-        llm_model=llm_model,
-        max_tokens=max_tokens,
-        tts_provider=tts_provider,
-        voice_id=voice_id,
-        speed=speed,
-        volume=volume,
-        stt_provider=stt_provider,
+        stt=agents.STTConfig(
+            provider=stt_provider,
+            model=stt_model,
+        ),
+        llm=agents.LLMConfig(
+            model=llm_model,
+            provider=llm_provider,
+            max_tokens=llm_max_tokens
+        ),
+        tts=agents.TTSConfig(
+            model=tts_model,
+            provider=tts_provider,
+            voice_id=tts_voice_id,
+            speed=tts_speed,
+            volume=tts_volume
+        ),
         tools=tools,
         greeting=greeting,
     )

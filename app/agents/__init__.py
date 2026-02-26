@@ -43,6 +43,21 @@ class CallerDetails(BaseModel):
     phone: Optional[str] = None
     email: Optional[str] = None
 
+class ModelBase(BaseModel):
+    model: str
+    provider: str
+
+class STTConfig(ModelBase):
+    min_endpoiniting: float = None
+    max_endpointing: float = None
+class LLMConfig(ModelBase):
+    max_tokens: int
+class TTSConfig(ModelBase):
+    voice_id: str
+    emotion: str
+    speed: str
+    volume: str
+
 class AgentConfig(BaseModel):
     user_id: str
     agent_id: str
@@ -51,23 +66,15 @@ class AgentConfig(BaseModel):
 
     call_details: Optional[CallDetails] = None
 
-    # LLM
     system_prompt: str
-    llm_provider: LLMProvider = LLMProvider.GROQ
-    llm_model: str = "qwen/qwen3-32b"
-    max_tokens: int = 100
 
-    # Voice
-    tts_provider: TTSProvider = TTSProvider.CARTESIA
-    voice_id: str = None
-    emotion: Optional[str] = "Happy"
-    speed: float = 1.0
-    volume: float = 1.0
+    # LLM
+    llm: LLMConfig
+    tts: TTSConfig
+    stt: STTConfig
+
     language: Optional[str] = "English"
     additional_languages: List[str] = field(default_factory=list)
-
-    # STT
-    stt_provider: STTProvider = STTProvider.DEEPGRAM
 
     # Tools
     tools: List[str] = field(default_factory=list) # tool names, not functions
