@@ -5,7 +5,7 @@ from datetime import datetime
 import pytz
 import phonenumbers
 
-from livekit.agents import Agent, llm
+from livekit.agents import Agent, llm, stt, tts
 from livekit.plugins import deepgram, cartesia, groq, openai, elevenlabs, assemblyai, silero
 from livekit.plugins.turn_detector.english import EnglishModel
 from livekit.plugins.turn_detector.multilingual import MultilingualModel
@@ -53,9 +53,9 @@ vad = silero.VAD.load(
 
 class InboundAgent(Agent):
     def __init__(self,
-                 stt,
-                 llm,
-                 tts,
+                 stt: stt.STT,
+                 llm: llm.LLM,
+                 tts: tts.TTS,
                  config: AgentConfig):
         tools = resolve_tools(config)
         super().__init__(
