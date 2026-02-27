@@ -91,7 +91,7 @@ TOOL_REGISTRY = {
     "transfer_to_human": resolve_transfer_to_human,
     "call_back": resolve_call_back,
     "do_not_call": resolve_do_not_call,
-    "detected_voicemail": detected_voicemail,
+    "detected_voicemail": resolve_detected_voicemail,
 #     "utility_switch_to_english": resolve_utility_switch_to_english, #TODO DB State Maintain from FE
 #     "utility_switch_to_spanish": resolve_utility_switch_to_spanish, #TODO DB State Maintain from FE
 #     "utility_switch_to_french": resolve_utility_switch_to_french, #TODO DB State Maintain from FE
