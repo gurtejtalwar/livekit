@@ -5,7 +5,7 @@ from livekit.agents import (
     cli
 )
 
-from app.agent.templates.outbound_agent.entrypoint import outbound_server # noqa: F401
+from app.agents.templates.outbound_agent.entrypoint import outbound_server # noqa: F401
 
 load_dotenv(dotenv_path=".env", override=True)
 
