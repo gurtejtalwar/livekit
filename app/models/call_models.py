@@ -66,6 +66,8 @@ class VoiceCalls(Document):
     # ownership
     user_id = ObjectIdField(required=True)
 
+    call_type = StringField()
+
     # identifiers
     agent_id = StringField()
     agent_name = StringField()
@@ -209,6 +211,7 @@ class VoiceCallDetails(Document):
 
     agent_id = StringField()
     agent_name = StringField()
+    call_type = StringField()
 
     branch_id = StringField()
     version_id = StringField()
@@ -238,41 +241,16 @@ async def on_call_arrived(config: AgentConfig, session: AgentSession) -> ObjectI
     Called when a call starts.
     Extracts minimal data from config + session.
     """
+    #TODO HAZARD REDUNDANCY
+    # if config.call_type == "inbound":
+    return await inbound_handler(config, session)
+    # if config.call_type == "outbound":
+    #     return await outbound_handler(config, session)
+    # if config.call_type == "test-inbound":
+    #     return await test_inbound_handler(config, session)
+    # if config.call_type == "test-outbound":
+    #     return await test_outbound_handler(config, session)
 
-    call = VoiceCalls(
-        user_id=config.user_id,
-        agent_id=config.agent_id,
-        agent_name=config.agent_name,
-        # branch_id=getattr(config, "branch_id", None),
-        # version_id=getattr(config, "version_id", None),
-        start_time_unix_secs=session._started_at,
-        status="in_progress",
-        agent_phone=config.call_details.call_to,
-        customer_phone=config.call_details.call_from,
-    ).save()
-
-    VoiceCallDetails(
-        call_id=str(call.id),                 # internal linkage
-        user_id=config.user_id,
-        agent_id=config.agent_id,
-        agent_name=config.agent_name,
-        lk_metadata=LivekitMetadata(
-            sip=SipMetadata(
-                local_participant_sid=session.room_io.room.local_participant.sid,
-                remote_participant_sid=list(session.room_io.room.remote_participants.values())[0].sid,
-                trunk_id=config.call_details.trunk_id,
-                dispatch_rule=config.call_details.dispatch_rule,
-                call_to=config.call_details.call_to,
-                call_from=config.call_details.call_from,
-            )
-        ),
-        # branch_id=getattr(config, "branch_id", None),
-        # version_id=getattr(config, "version_id", None),
-        status="in_progress",
-    ).save()
-
-    session.userdata.call_id = str(call.id)
-    return call.id
 
 async def on_call_ended(
     config: AgentConfig,
@@ -484,3 +462,115 @@ async def save_analysis(call_id: str, analysis: schemas.PostCallAnalysis):
     call_details.analysis = analysis
     call_details.save()
 
+
+async def inbound_handler(config: AgentConfig, session: AgentSession):
+
+    call = VoiceCalls(
+        user_id=config.user_id,
+        agent_id=config.agent_id,
+        agent_name=config.agent_name,
+        call_type=config.call_type,
+        # branch_id=getattr(config, "branch_id", None),
+        # version_id=getattr(config, "version_id", None),
+        start_time_unix_secs=session._started_at,
+        status="in_progress",
+        agent_phone=config.call_details.call_to,
+        customer_phone=config.call_details.call_from,
+    ).save()
+
+    VoiceCallDetails(
+        call_id=str(call.id),                 # internal linkage
+        user_id=config.user_id,
+        agent_id=config.agent_id,
+        agent_name=config.agent_name,
+        call_type=config.call_type,
+        lk_metadata=LivekitMetadata(
+            sip=SipMetadata(
+                local_participant_sid=session.room_io.room.local_participant.sid,
+                remote_participant_sid=list(session.room_io.room.remote_participants.values())[0].sid,
+                trunk_id=config.call_details.trunk_id,
+                dispatch_rule=config.call_details.dispatch_rule,
+                call_to=config.call_details.call_to,
+                call_from=config.call_details.call_from,
+            )
+        ),
+        # branch_id=getattr(config, "branch_id", None),
+        # version_id=getattr(config, "version_id", None),
+        status="in_progress",
+    ).save()
+
+    session.userdata.call_id = str(call.id)
+    return call.id
+
+async def outbound_handler(config, session):
+    pass
+
+async def test_inbound_handler(config: AgentConfig, session: AgentSession):
+
+    call = VoiceCalls(
+        user_id=config.user_id,
+        agent_id=config.agent_id,
+        agent_name=config.agent_name,
+        call_type=config.call_type,
+        start_time_unix_secs=session._started_at,
+        status="in_progress",
+        agent_phone=config.call_details.call_to,
+        customer_phone=config.call_details.call_from,
+    ).save()
+
+    VoiceCallDetails(
+        call_id=str(call.id),                 # internal linkage
+        user_id=config.user_id,
+        agent_id=config.agent_id,
+        agent_name=config.agent_name,
+        call_type=config.call_type,
+        # lk_metadata=LivekitMetadata(
+        #     sip=SipMetadata(
+        #         local_participant_sid=session.room_io.room.local_participant.sid,
+        #         remote_participant_sid=list(session.room_io.room.remote_participants.values())[0].sid,
+        #         trunk_id=config.call_details.trunk_id,
+        #         dispatch_rule=config.call_details.dispatch_rule,
+        #         call_to=config.call_details.call_to,
+        #         call_from=config.call_details.call_from,
+        #     )
+        # ),
+        status="in_progress",
+    ).save()
+
+    session.userdata.call_id = str(call.id)
+    return call.id
+
+async def test_outbound_handler(config: AgentConfig, session: AgentSession):
+
+    call = VoiceCalls(
+        user_id=config.user_id,
+        agent_id=config.agent_id,
+        agent_name=config.agent_name,
+        call_type=config.call_type,
+        start_time_unix_secs=session._started_at,
+        status="in_progress",
+        agent_phone=config.call_details.call_to,
+        customer_phone=config.call_details.call_from,
+    ).save()
+
+    VoiceCallDetails(
+        call_id=str(call.id),                 # internal linkage
+        user_id=config.user_id,
+        agent_id=config.agent_id,
+        agent_name=config.agent_name,
+        call_type=config.call_type,
+        # lk_metadata=LivekitMetadata(
+        #     sip=SipMetadata(
+        #         local_participant_sid=session.room_io.room.local_participant.sid,
+        #         remote_participant_sid=list(session.room_io.room.remote_participants.values())[0].sid,
+        #         trunk_id=config.call_details.trunk_id,
+        #         dispatch_rule=config.call_details.dispatch_rule,
+        #         call_to=config.call_details.call_to,
+        #         call_from=config.call_details.call_from,
+        #     )
+        # ),
+        status="in_progress",
+    ).save()
+
+    session.userdata.call_id = str(call.id)
+    return call.id
