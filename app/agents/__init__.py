@@ -55,8 +55,8 @@ class LLMConfig(ModelBase):
 class TTSConfig(ModelBase):
     voice_id: str
     emotion: str
-    speed: str
-    volume: str
+    speed: str|float
+    volume: str|float
     emotion: str
 
 class AgentConfig(BaseModel):
