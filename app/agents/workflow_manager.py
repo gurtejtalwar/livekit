@@ -1,8 +1,8 @@
 import logging
 import asyncio
 from typing import Dict, Type
-from livekit.agents import utils, llm
-
+from livekit.agents import AgentTask, llm
+from livekit.agents.beta.workflows import TaskGroup
 from app.agents.tools import TOOL_REGISTRY, ToolContext, load_knowledge_base
 
 logger = logging.getLogger("workflow")
@@ -40,7 +40,7 @@ def _build_prompt(instructions: str, settings: dict) -> str:
             prompt += f"User: {ex.get('user', '')}\nAssistant: {ex.get('assistant', '')}\n\n"
     return prompt
 
-def _apply_voice_overrides(task: utils.AgentTask, settings: dict):
+def _apply_voice_overrides(task: AgentTask, settings: dict):
     """Applies TTS overrides if defined in node settings."""
     overrides = settings.get("voice_overrides", {})
     if overrides and hasattr(task, 'agent') and task.agent and task.agent.tts:
@@ -57,10 +57,10 @@ def _apply_voice_overrides(task: utils.AgentTask, settings: dict):
              except Exception as e:
                  logger.error(f"Failed to apply voice overrides: {e}")
 
-def create_rigid_task(state_name: str, state_config: dict, global_nodes: list) -> Type[utils.AgentTask]:
+def create_rigid_task(state_name: str, state_config: dict, global_nodes: list) -> Type[AgentTask]:
     """Rigid mode: Agent strictly follows the graph edges."""
     
-    class DynamicRigidTask(utils.AgentTask):
+    class DynamicRigidTask(AgentTask):
         def __init__(self, agent_config, *args, **kwargs):
             super().__init__(*args, **kwargs)
             # Pre-resolve tools for this node
@@ -106,10 +106,10 @@ def create_rigid_task(state_name: str, state_config: dict, global_nodes: list) -
     DynamicRigidTask.__name__ = f"{state_name}Task"
     return DynamicRigidTask
 
-def create_flex_task(workflow_json: dict) -> Type[utils.AgentTask]:
+def create_flex_task(workflow_json: dict) -> Type[AgentTask]:
     """Flex mode: Entire graph is loaded into a single task with jumping tools."""
     
-    class DynamicFlexTask(utils.AgentTask):
+    class DynamicFlexTask(AgentTask):
         def __init__(self, agent_config, *args, **kwargs):
             super().__init__(*args, **kwargs)
             self.current_node_name = workflow_json.get("start_state")
@@ -184,7 +184,7 @@ async def build_and_run_workflow(agent, workflow_json: dict):
             TaskCls = task_classes[current_state]
             # Must pass the agent's config mapping
             task_instance = TaskCls(agent.config)
-            group = utils.TaskGroup(tasks=[task_instance])
+            group = TaskGroup(tasks=[task_instance])
             
             # The result yielded by `transition` tool triggers the next state
             current_state = await group.run(agent)
@@ -194,5 +194,5 @@ async def build_and_run_workflow(agent, workflow_json: dict):
     elif mode == "flex":
         FlexTaskCls = create_flex_task(workflow_json)
         task_instance = FlexTaskCls(agent.config)
-        group = utils.TaskGroup(tasks=[task_instance])
+        group = TaskGroup(tasks=[task_instance])
         await group.run(agent)
