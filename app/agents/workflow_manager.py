@@ -62,6 +62,8 @@ def create_rigid_task(state_name: str, state_config: dict, global_nodes: list) -
     
     class DynamicRigidTask(AgentTask):
         def __init__(self, agent_config, *args, **kwargs):
+            # Resolve instructions for the base AgentTask
+            kwargs["instructions"] = state_config.get("instructions", "")
             super().__init__(*args, **kwargs)
             # Pre-resolve tools for this node
             self._node_tools = _resolve_node_tools(agent_config, state_config.get("settings", {}))
@@ -111,8 +113,15 @@ def create_flex_task(workflow_json: dict) -> Type[AgentTask]:
     
     class DynamicFlexTask(AgentTask):
         def __init__(self, agent_config, *args, **kwargs):
-            super().__init__(*args, **kwargs)
             self.current_node_name = workflow_json.get("start_state")
+            # Resolve initial instructions
+            node = workflow_json.get("states", {}).get(self.current_node_name, {})
+            base = f"You are currently at the '{self.current_node_name}' step. \nInstructions: {node.get('instructions', '')}\n"
+            base += "You have tools available to jump to any other step in the flow if the user preemptively answers it."
+            
+            kwargs["instructions"] = base
+            super().__init__(*args, **kwargs)
+            
             self.agent_config = agent_config
             self._current_node_tools = []
         
@@ -178,21 +187,37 @@ async def build_and_run_workflow(agent, workflow_json: dict):
         for state_name, config in states.items():
             task_classes[state_name] = create_rigid_task(state_name, config, global_nodes)
             
-        current_state = start_state
+        group = TaskGroup(chat_ctx=agent.chat_ctx)
         
-        while current_state and current_state in task_classes:
-            TaskCls = task_classes[current_state]
-            # Must pass the agent's config mapping
-            task_instance = TaskCls(agent.config)
-            group = TaskGroup(tasks=[task_instance])
+        # We add ALL generated rigid tasks into the TaskGroup.
+        # The first task added will start execution.
+        first_task = True
+        for state_name, TaskCls in task_classes.items():
+            def make_task_factory(cls=TaskCls, cfg=agent.config):
+                return lambda: cls(cfg)
+                
+            group.add(
+                make_task_factory(),
+                id=state_name,
+                description=states[state_name].get("instructions", f"Step: {state_name}")[:100]
+            )
             
-            # The result yielded by `transition` tool triggers the next state
-            current_state = await group.run(agent)
-            
-        logger.info("[Workflow] Reached end of rigid workflow or invalid state.")
+        # The workflow takes over the session and handles the re/entry of tasks
+        logger.info(f"[Workflow] Running Rigid TaskGroup initialized with {len(task_classes)} states.")
+        results = await group.run(agent)
+        logger.info(f"[Workflow] Finished Rigid Workflow. Results: {results}")
+
         
     elif mode == "flex":
         FlexTaskCls = create_flex_task(workflow_json)
-        task_instance = FlexTaskCls(agent.config)
-        group = TaskGroup(tasks=[task_instance])
-        await group.run(agent)
+        group = TaskGroup(chat_ctx=agent.chat_ctx)
+        
+        group.add(
+            lambda: FlexTaskCls(agent.config),
+            id="flex_router",
+            description="Flex router state holding all logic"
+        )
+        
+        logger.info("[Workflow] Running Flex TaskGroup.")
+        results = await group.run(agent)
+        logger.info(f"[Workflow] Finished Flex Workflow. Results: {results}")
