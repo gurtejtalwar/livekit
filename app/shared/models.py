@@ -171,6 +171,19 @@ class VoiceAgentEscalation(Document):
     teamMembers = ListField(DictField())
     escalationPrompt = StringField()
 
+class VoiceAgentWorkflow(Document):
+    meta = {
+        "collection": "voice-agent-workflow",
+        "indexes": ["userId", "agentId"],
+        "strict": False  # Allow mongoose extra fields
+    }
+
+    userId = ObjectIdField(required=True)
+    agentId = ObjectIdField(required=True)
+
+    mode = StringField()
+    workflowConfig = DictField()
+
 class VoiceAgentAdvancedSettings(Document):
     meta = {
         "collection": "voice-advanced-settings",

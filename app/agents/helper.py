@@ -15,6 +15,7 @@ async def load_agent_runtime_config(agent_id: str, user_data: UserData):
         agentId=agent.id).first()
     voice_doc: models.VoiceAgentVoiceConfig = models.VoiceAgentVoiceConfig.objects(
         agentId=agent.id).first()
+    workflow_doc: models.VoiceAgentWorkflow = models.VoiceAgentWorkflow.objects(agentId=agent.id).first()
     identity_doc = models.VoiceAgentIdentity.objects(agentId=agent.id).first()
     advanced_doc = models.VoiceAgentAdvancedSettings.objects(agentId=agent.id).first()
 
@@ -80,6 +81,7 @@ async def load_agent_runtime_config(agent_id: str, user_data: UserData):
         agent_name=agent.agentName,
         knowledge_base_id=agent.knowledgeBaseId,
         system_prompt=lk_prompt,
+        workflow_graph_json=workflow_doc.workflowConfig if workflow_doc else None,
         stt=agents.STTConfig(
             provider=stt_provider,
             model=stt_model,

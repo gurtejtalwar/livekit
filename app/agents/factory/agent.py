@@ -17,6 +17,8 @@ from app.models import call_models
 from app.shared import schemas
 from app.agents import helper
 from app.agents import factory
+from app.agents.workflow_manager import build_and_run_workflow
+import asyncio
 
 logger = logging.getLogger("factory")
 
@@ -80,6 +82,11 @@ class InboundAgent(Agent):
         logger.info("Node: on_enter called")
         await update_config_with_caller_context(self.config)
         await call_models.on_call_arrived(self.config, self.session)
+        
+        if getattr(self.config, 'workflow_graph_json', None):
+            logger.info("Initializing workflow engine from JSON payload.")
+            asyncio.create_task(build_and_run_workflow(self, self.config.workflow_graph_json))
+            
     # def sync_wrapper(metrics: LLMMetrics):
         #     asyncio.create_task(self.on_metrics_collected(metrics))
 

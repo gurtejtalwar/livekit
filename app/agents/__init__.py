@@ -64,6 +64,7 @@ class AgentConfig(BaseModel):
     agent_id: str
     agent_name: str
     knowledge_base_id: Optional[str] = None
+    workflow_graph_json: Optional[dict] = None
 
     call_type: Literal["inbound", "outbound", "test-inbound", "test-outbound"] = None
     call_details: Optional[CallDetails] = None
