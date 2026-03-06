@@ -75,14 +75,14 @@ async def load_agent_runtime_config(agent_id: str, user_data: UserData):
         else "Hello! How can I assist you today?"
     )
 
-    print(f"Workflow Config: {workflow_doc.workflowConfig}") #TODO revert
+    print(f"Workflow Config: {workflow_doc.workflow_config}") #TODO revert
     return agents.AgentConfig(
         user_id=str(user_data.user_id),
         agent_id=str(agent.id),
         agent_name=agent.agentName,
         knowledge_base_id=agent.knowledgeBaseId,
         system_prompt=lk_prompt,
-        workflow_graph_json=workflow_doc.workflowConfig if workflow_doc else None,
+        workflow_graph_json=workflow_doc.workflow_config if workflow_doc else None,
         stt=agents.STTConfig(
             provider=stt_provider,
             model=stt_model,
