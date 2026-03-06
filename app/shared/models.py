@@ -182,7 +182,7 @@ class VoiceAgentWorkflow(Document):
     agentId = ObjectIdField(required=True)
 
     mode = StringField()
-    workflowConfig = DictField()
+    workflow_config = DictField()
 
 class VoiceAgentAdvancedSettings(Document):
     meta = {
