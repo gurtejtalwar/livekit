@@ -79,7 +79,16 @@ def create_rigid_task(state_name: str, state_config: dict, global_nodes: list) -
             _apply_voice_overrides(self, settings)
             
             prompt = _build_prompt(state_config.get("instructions", ""), settings)
-            self.agent.chat_ctx.messages[0].content = prompt
+            
+            # The correct property according to the AgentTask API is self.session.chat_ctx
+            if hasattr(self, 'session') and self.session and self.session.chat_ctx:
+                sys_msg = next((m for m in self.session.chat_ctx.messages if m.role == "system"), None)
+                if sys_msg:
+                    sys_msg.content = prompt
+                else:
+                    self.session.chat_ctx.messages.append(llm.ChatMessage(role="system", content=prompt))
+            else:
+                 logger.warning("AgentSession or ChatContext missing; could not set instructions.")
             
         @llm.function_tool
         async def transition(self, next_state: str, reason: str):
@@ -143,7 +152,12 @@ def create_flex_task(workflow_json: dict) -> Type[AgentTask]:
             base += "You have tools available to jump to any other step in the flow if the user preemptively answers it."
             
             prompt = _build_prompt(base, settings)
-            self.agent.chat_ctx.messages[0].content = prompt
+            if hasattr(self, 'session') and self.session and self.session.chat_ctx:
+                sys_msg = next((m for m in self.session.chat_ctx.messages if m.role == "system"), None)
+                if sys_msg:
+                    sys_msg.content = prompt
+                else:
+                    self.session.chat_ctx.messages.append(llm.ChatMessage(role="system", content=prompt))
 
         @llm.function_tool
         async def jump_to_node(self, target_node: str, reason: str):
@@ -155,9 +169,10 @@ def create_flex_task(workflow_json: dict) -> Type[AgentTask]:
             self.current_node_name = target_node
             self._update_prompt_and_tools()
             
-            self.agent.chat_ctx.messages.append(
-                llm.ChatMessage(role="system", content=f"Successfully jumped state to {target_node}.")
-            )
+            if hasattr(self, 'session') and self.session and self.session.chat_ctx:
+                self.session.chat_ctx.messages.append(
+                    llm.ChatMessage(role="system", content=f"Successfully jumped state to {target_node}.")
+                )
             return f"Jumped to {target_node}."
 
         def get_functions(self):
