@@ -204,7 +204,7 @@ async def build_and_run_workflow(agent, workflow_json: dict):
             
         # The workflow takes over the session and handles the re/entry of tasks
         logger.info(f"[Workflow] Running Rigid TaskGroup initialized with {len(task_classes)} states.")
-        results = await group.run(agent)
+        results = await group
         logger.info(f"[Workflow] Finished Rigid Workflow. Results: {results}")
 
         
@@ -219,5 +219,5 @@ async def build_and_run_workflow(agent, workflow_json: dict):
         )
         
         logger.info("[Workflow] Running Flex TaskGroup.")
-        results = await group.run(agent)
+        results = await group
         logger.info(f"[Workflow] Finished Flex Workflow. Results: {results}")
