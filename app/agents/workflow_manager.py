@@ -61,12 +61,13 @@ def create_rigid_task(state_name: str, state_config: dict, global_nodes: list) -
     """Rigid mode: Agent strictly follows the graph edges."""
     
     class DynamicRigidTask(AgentTask):
-        def __init__(self, agent_config, *args, **kwargs):
+        def __init__(self, agent, *args, **kwargs):
             # Resolve instructions for the base AgentTask
             kwargs["instructions"] = state_config.get("instructions", "")
             super().__init__(*args, **kwargs)
+            self.agent = agent
             # Pre-resolve tools for this node
-            self._node_tools = _resolve_node_tools(agent_config, state_config.get("settings", {}))
+            self._node_tools = _resolve_node_tools(agent.config, state_config.get("settings", {}))
             self.agent_config = agent_config
             
             # Important: Inject the node's tools onto this task instance
@@ -80,15 +81,14 @@ def create_rigid_task(state_name: str, state_config: dict, global_nodes: list) -
             
             prompt = _build_prompt(state_config.get("instructions", ""), settings)
             
-            # The correct property according to the AgentTask API is self.session.chat_ctx
-            if hasattr(self, 'session') and self.session and self.session.chat_ctx:
-                sys_msg = next((m for m in self.session.chat_ctx.messages if m.role == "system"), None)
+            if hasattr(self.agent, 'chat_ctx') and self.agent.chat_ctx:
+                sys_msg = next((m for m in self.agent.chat_ctx.messages if m.role == "system"), None)
                 if sys_msg:
                     sys_msg.content = prompt
                 else:
-                    self.session.chat_ctx.messages.append(llm.ChatMessage(role="system", content=prompt))
+                    self.agent.chat_ctx.messages.append(llm.ChatMessage(role="system", content=prompt))
             else:
-                 logger.warning("AgentSession or ChatContext missing; could not set instructions.")
+                 logger.warning("Agent ChatContext missing; could not set instructions.")
             
         @llm.function_tool
         async def transition(self, next_state: str, reason: str):
@@ -121,7 +121,7 @@ def create_flex_task(workflow_json: dict) -> Type[AgentTask]:
     """Flex mode: Entire graph is loaded into a single task with jumping tools."""
     
     class DynamicFlexTask(AgentTask):
-        def __init__(self, agent_config, *args, **kwargs):
+        def __init__(self, agent, *args, **kwargs):
             self.current_node_name = workflow_json.get("start_state")
             # Resolve initial instructions
             node = workflow_json.get("states", {}).get(self.current_node_name, {})
@@ -131,7 +131,8 @@ def create_flex_task(workflow_json: dict) -> Type[AgentTask]:
             kwargs["instructions"] = base
             super().__init__(*args, **kwargs)
             
-            self.agent_config = agent_config
+            self.agent = agent
+            self.agent_config = agent.config
             self._current_node_tools = []
         
         async def on_enter(self):
@@ -152,12 +153,12 @@ def create_flex_task(workflow_json: dict) -> Type[AgentTask]:
             base += "You have tools available to jump to any other step in the flow if the user preemptively answers it."
             
             prompt = _build_prompt(base, settings)
-            if hasattr(self, 'session') and self.session and self.session.chat_ctx:
-                sys_msg = next((m for m in self.session.chat_ctx.messages if m.role == "system"), None)
+            if hasattr(self.agent, 'chat_ctx') and self.agent.chat_ctx:
+                sys_msg = next((m for m in self.agent.chat_ctx.messages if m.role == "system"), None)
                 if sys_msg:
                     sys_msg.content = prompt
                 else:
-                    self.session.chat_ctx.messages.append(llm.ChatMessage(role="system", content=prompt))
+                    self.agent.chat_ctx.messages.append(llm.ChatMessage(role="system", content=prompt))
 
         @llm.function_tool
         async def jump_to_node(self, target_node: str, reason: str):
@@ -169,8 +170,8 @@ def create_flex_task(workflow_json: dict) -> Type[AgentTask]:
             self.current_node_name = target_node
             self._update_prompt_and_tools()
             
-            if hasattr(self, 'session') and self.session and self.session.chat_ctx:
-                self.session.chat_ctx.messages.append(
+            if hasattr(self.agent, 'chat_ctx') and self.agent.chat_ctx:
+                self.agent.chat_ctx.messages.append(
                     llm.ChatMessage(role="system", content=f"Successfully jumped state to {target_node}.")
                 )
             return f"Jumped to {target_node}."
@@ -208,8 +209,8 @@ async def build_and_run_workflow(agent, workflow_json: dict):
         # The first task added will start execution.
         first_task = True
         for state_name, TaskCls in task_classes.items():
-            def make_task_factory(cls=TaskCls, cfg=agent.config):
-                return lambda: cls(cfg)
+            def make_task_factory(cls=TaskCls, agt=agent):
+                return lambda: cls(agt)
                 
             group.add(
                 make_task_factory(),
@@ -228,7 +229,7 @@ async def build_and_run_workflow(agent, workflow_json: dict):
         group = TaskGroup(chat_ctx=agent.chat_ctx)
         
         group.add(
-            lambda: FlexTaskCls(agent.config),
+            lambda: FlexTaskCls(agent),
             id="flex_router",
             description="Flex router state holding all logic"
         )
