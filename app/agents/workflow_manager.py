@@ -68,7 +68,7 @@ def create_rigid_task(state_name: str, state_config: dict, global_nodes: list) -
             self.agent = agent
             # Pre-resolve tools for this node
             self._node_tools = _resolve_node_tools(agent.config, state_config.get("settings", {}))
-            self.agent_config = agent_config
+            self.agent_config = agent.config
             
             # Important: Inject the node's tools onto this task instance
             # Depending on LiveKit SDK version, tools might need to be exposed via a method or property
