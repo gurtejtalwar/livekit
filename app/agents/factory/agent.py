@@ -85,7 +85,7 @@ class InboundAgent(Agent):
         
         if getattr(self.config, 'workflow_graph_json', None):
             logger.info("Initializing workflow engine from JSON payload.")
-            asyncio.create_task(build_and_run_workflow(self, self.config.workflow_graph_json))
+            await build_and_run_workflow(self, self.config.workflow_graph_json)
             
     # def sync_wrapper(metrics: LLMMetrics):
         #     asyncio.create_task(self.on_metrics_collected(metrics))
