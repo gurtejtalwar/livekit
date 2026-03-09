@@ -64,6 +64,11 @@ def create_rigid_task(state_name: str, state_config: dict, global_nodes: list, s
         def __init__(self, agent, *args, **kwargs):
             # Resolve instructions for the base AgentTask
             kwargs["instructions"] = state_config.get("instructions", "")
+            if agent:
+                if "llm" not in kwargs and hasattr(agent, "llm"): kwargs["llm"] = agent.llm
+                if "tts" not in kwargs and hasattr(agent, "tts"): kwargs["tts"] = agent.tts
+                if "stt" not in kwargs and hasattr(agent, "stt"): kwargs["stt"] = agent.stt
+                
             super().__init__(*args, **kwargs)
             self.agent = agent
             # Pre-resolve tools for this node
@@ -128,6 +133,11 @@ def create_flex_task(workflow_json: dict) -> Type[AgentTask]:
             base += "You have tools available to jump to any other step in the flow if the user preemptively answers it."
             
             kwargs["instructions"] = base
+            if agent:
+                if "llm" not in kwargs and hasattr(agent, "llm"): kwargs["llm"] = agent.llm
+                if "tts" not in kwargs and hasattr(agent, "tts"): kwargs["tts"] = agent.tts
+                if "stt" not in kwargs and hasattr(agent, "stt"): kwargs["stt"] = agent.stt
+                
             super().__init__(*args, **kwargs)
             
             self.agent = agent
