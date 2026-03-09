@@ -83,6 +83,12 @@ def create_rigid_task(state_name: str, state_config: dict, global_nodes: list) -
             # The prompt is already set via kwargs["instructions"] in __init__
             logger.debug(f"Rigid task '{state_name}' initialized with prompt overhead.")
             
+            # Fire an LLM generation for the first state so the agent greets the user natively
+            if state_name == workflow_json.get("start_state"):
+                if hasattr(self.agent, "session"):
+                    logger.info(f"[Workflow] Triggering initial LLM reply for start state: {state_name}")
+                    asyncio.create_task(self.agent.session.generate_reply())
+            
         @llm.function_tool
         async def transition(self, next_state: str, reason: str):
             """
@@ -131,6 +137,11 @@ def create_flex_task(workflow_json: dict) -> Type[AgentTask]:
         async def on_enter(self):
             logger.info(f"[Workflow] Started Flex workflow at: {self.current_node_name}")
             self._update_prompt_and_tools()
+            
+            # Fire an LLM generation to boot up the flex conversation
+            if hasattr(self.agent, "session"):
+                logger.info("[Workflow] Triggering initial LLM reply for flex workflow.")
+                asyncio.create_task(self.agent.session.generate_reply())
 
         def _update_prompt_and_tools(self):
             node = workflow_json["states"][self.current_node_name]
