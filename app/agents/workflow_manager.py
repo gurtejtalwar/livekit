@@ -57,7 +57,7 @@ def _apply_voice_overrides(task: AgentTask, settings: dict):
              except Exception as e:
                  logger.error(f"Failed to apply voice overrides: {e}")
 
-def create_rigid_task(state_name: str, state_config: dict, global_nodes: list) -> Type[AgentTask]:
+def create_rigid_task(state_name: str, state_config: dict, global_nodes: list, start_state: str) -> Type[AgentTask]:
     """Rigid mode: Agent strictly follows the graph edges."""
     
     class DynamicRigidTask(AgentTask):
@@ -84,7 +84,7 @@ def create_rigid_task(state_name: str, state_config: dict, global_nodes: list) -
             logger.debug(f"Rigid task '{state_name}' initialized with prompt overhead.")
             
             # Fire an LLM generation for the first state so the agent greets the user natively
-            if state_name == workflow_json.get("start_state"):
+            if state_name == start_state:
                 if hasattr(self.agent, "session"):
                     logger.info(f"[Workflow] Triggering initial LLM reply for start state: {state_name}")
                     asyncio.create_task(self.agent.session.generate_reply())
@@ -198,7 +198,7 @@ async def build_and_run_workflow(agent, workflow_json: dict):
     if mode == "rigid":
         task_classes = {}
         for state_name, config in states.items():
-            task_classes[state_name] = create_rigid_task(state_name, config, global_nodes)
+            task_classes[state_name] = create_rigid_task(state_name, config, global_nodes, start_state)
             
         group = TaskGroup(chat_ctx=agent.chat_ctx)
         
