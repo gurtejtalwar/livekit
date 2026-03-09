@@ -2,7 +2,6 @@ import logging
 import asyncio
 from typing import Dict, Type
 from livekit.agents import AgentTask, llm
-from livekit.agents.beta.workflows import TaskGroup
 from app.agents.tools import TOOL_REGISTRY, ToolContext, load_knowledge_base
 
 logger = logging.getLogger("workflow")
@@ -97,7 +96,7 @@ def create_rigid_task(state_name: str, state_config: dict, global_nodes: list, s
         @llm.function_tool
         async def transition(self, next_state: str, reason: str):
             """
-            Call this to move to the next state in the workflow.
+            Call this on each to move to the next state in the workflow.
             """
             allowed = list(state_config.get("transitions", {}).values()) + global_nodes
             if next_state not in allowed:
@@ -209,39 +208,40 @@ async def build_and_run_workflow(agent, workflow_json: dict):
         task_classes = {}
         for state_name, config in states.items():
             task_classes[state_name] = create_rigid_task(state_name, config, global_nodes, start_state)
-            print(f"Task Classes: \n{task_classes}") #TODO revert
 
-        group = TaskGroup(chat_ctx=agent.chat_ctx)
+        current_state = start_state
+        logger.info(f"[Workflow] Running Rigid Graph initialized with {len(task_classes)} states.")
         
-        # We add ALL generated rigid tasks into the TaskGroup.
-        # The first task added will start execution.
-        first_task = True
-        for state_name, TaskCls in task_classes.items():
-            def make_task_factory(cls=TaskCls, agt=agent):
-                return lambda: cls(agt)
+        while current_state:
+            if current_state not in task_classes:
+                logger.warning(f"State '{current_state}' not found in workflow states, exiting.")
+                break
                 
-            group.add(
-                make_task_factory(),
-                id=state_name,
-                description=states[state_name].get("instructions", f"Step: {state_name}")[:100]
-            )
+            logger.info(f"[Workflow] Activating node: {current_state}")
+            TaskCls = task_classes[current_state]
             
-        # The workflow takes over the session and handles the re/entry of tasks
-        logger.info(f"[Workflow] Running Rigid TaskGroup initialized with {len(task_classes)} states.")
-        results = await group
-        logger.info(f"[Workflow] Finished Rigid Workflow. Results: {results}")
+            # Ensure context persists across tasks without manual injection
+            task = TaskCls(agent, chat_ctx=agent.chat_ctx.copy())
+            
+            try:
+                # Suspends root agent, hands over session to this node
+                # Execution yields back here with `next_state` when task completes via `self.complete(next_state)`
+                current_state = await task 
+            except Exception as e:
+                logger.error(f"[Workflow] Error executing state '{current_state}': {e}")
+                break
+                
+        logger.info(f"[Workflow] Finished Rigid Workflow. Final state: {current_state}")
 
         
     elif mode == "flex":
         FlexTaskCls = create_flex_task(workflow_json)
-        group = TaskGroup(chat_ctx=agent.chat_ctx)
         
-        group.add(
-            lambda: FlexTaskCls(agent),
-            id="flex_router",
-            description="Flex router state holding all logic"
-        )
+        logger.info("[Workflow] Running Flex Task directly.")
+        task = FlexTaskCls(agent, chat_ctx=agent.chat_ctx.copy())
         
-        logger.info("[Workflow] Running Flex TaskGroup.")
-        results = await group
-        logger.info(f"[Workflow] Finished Flex Workflow. Results: {results}")
+        try:
+            results = await task
+            logger.info(f"[Workflow] Finished Flex Workflow. Results: {results}")
+        except Exception as e:
+            logger.error(f"[Workflow] Flex Task execution error: {e}")
