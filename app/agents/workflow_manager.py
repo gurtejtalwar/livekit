@@ -29,12 +29,26 @@ def _resolve_node_tools(agent_config, settings: dict) -> list:
             
     return resolved_tools
 
-def _build_prompt(instructions: str, settings: dict) -> str:
-    """Builds the system prompt with few-shot examples if present."""
+def _build_prompt(instructions: str, settings: dict, transitions: dict = None, global_nodes: list = None) -> str:
+    """Builds the system prompt with few-shot examples and strict transition rules if present."""
     prompt = instructions + "\n\n"
+    
+    if transitions is not None or global_nodes:
+        prompt += "### WORKFLOW ROUTING RULES\n"
+        prompt += "You MUST route the conversation to the next step using the `transition` tool once your objective is complete. "
+        prompt += "Here are the allowed transitions and their exact required reasons:\n"
+        if transitions:
+            for reason, next_node in transitions.items():
+                prompt += f"- If {reason}, use next_state: '{next_node}' with reason: '{reason}'\n"
+        if global_nodes:
+            prompt += "You may also transition to any of these global nodes at any time if requested by the user:\n"
+            for g_node in global_nodes:
+                prompt += f"- next_state: '{g_node}'\n"
+        prompt += "\n"
+        
     examples = settings.get("examples", [])
     if examples:
-        prompt += "Examples of how to handle this state:\n"
+        prompt += "### EXAMPLES\n"
         for ex in examples:
             prompt += f"User: {ex.get('user', '')}\nAssistant: {ex.get('assistant', '')}\n\n"
     return prompt
@@ -61,8 +75,16 @@ def create_rigid_task(state_name: str, state_config: dict, global_nodes: list, s
     
     class DynamicRigidTask(AgentTask):
         def __init__(self, agent, *args, **kwargs):
-            # Resolve instructions for the base AgentTask
-            kwargs["instructions"] = state_config.get("instructions", "")
+            # Resolve instructions with examples and exact transitions for the LLM
+            settings = state_config.get("settings", {})
+            transitions = state_config.get("transitions", {})
+            full_instructions = _build_prompt(
+                state_config.get("instructions", ""), 
+                settings, 
+                transitions, 
+                global_nodes
+            )
+            kwargs["instructions"] = full_instructions
             if agent:
                 if "llm" not in kwargs and hasattr(agent, "llm"): kwargs["llm"] = agent.llm
                 if "tts" not in kwargs and hasattr(agent, "tts"): kwargs["tts"] = agent.tts
@@ -82,10 +104,7 @@ def create_rigid_task(state_name: str, state_config: dict, global_nodes: list, s
             logger.info(f"[Workflow] Entered rigid state: {state_name}")
             settings = state_config.get("settings", {})
             _apply_voice_overrides(self, settings)
-            
-            prompt = _build_prompt(state_config.get("instructions", ""), settings)
-            # The prompt is already set via kwargs["instructions"] in __init__
-            logger.debug(f"Rigid task '{state_name}' initialized with prompt overhead.")
+            logger.debug(f"Rigid task '{state_name}' initialized with explicit routing prompt overhead.")
             
             # Fire an LLM generation for the first state so the agent greets the user natively
             if state_name == start_state:
@@ -128,10 +147,13 @@ def create_flex_task(workflow_json: dict) -> Type[AgentTask]:
             self.current_node_name = workflow_json.get("start_state")
             # Resolve initial instructions
             node = workflow_json.get("states", {}).get(self.current_node_name, {})
-            base = f"You are currently at the '{self.current_node_name}' step. \nInstructions: {node.get('instructions', '')}\n"
+            inst = node.get('instructions', '')
+            settings = node.get('settings', {})
+            
+            base = f"You are currently at the '{self.current_node_name}' step. \nInstructions: {inst}\n"
             base += "You have tools available to jump to any other step in the flow if the user preemptively answers it."
             
-            kwargs["instructions"] = base
+            kwargs["instructions"] = _build_prompt(base, settings)
             if agent:
                 if "llm" not in kwargs and hasattr(agent, "llm"): kwargs["llm"] = agent.llm
                 if "tts" not in kwargs and hasattr(agent, "tts"): kwargs["tts"] = agent.tts
