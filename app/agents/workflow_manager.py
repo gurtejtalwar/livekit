@@ -56,7 +56,7 @@ def _apply_voice_overrides(task: AgentTask, settings: dict):
                  logger.debug(f"Applied voice overrides: {kwargs}")
              except Exception as e:
                  logger.error(f"Failed to apply voice overrides: {e}")
-
+    
 def create_rigid_task(state_name: str, state_config: dict, global_nodes: list, start_state: str) -> Type[AgentTask]:
     """Rigid mode: Agent strictly follows the graph edges."""
     
@@ -92,7 +92,7 @@ def create_rigid_task(state_name: str, state_config: dict, global_nodes: list, s
             if state_name == start_state:
                 if hasattr(self.agent, "session"):
                     logger.info(f"[Workflow] Triggering initial LLM reply for start state: {state_name}")
-                    asyncio.create_task(self.agent.session.generate_reply())
+                    self.agent.session.generate_reply()
             
         @llm.function_tool
         async def transition(self, next_state: str, reason: str):
@@ -151,7 +151,7 @@ def create_flex_task(workflow_json: dict) -> Type[AgentTask]:
             # Fire an LLM generation to boot up the flex conversation
             if hasattr(self.agent, "session"):
                 logger.info("[Workflow] Triggering initial LLM reply for flex workflow.")
-                asyncio.create_task(self.agent.session.generate_reply())
+                self.agent.session.generate_reply()
 
         def _update_prompt_and_tools(self):
             node = workflow_json["states"][self.current_node_name]
@@ -209,7 +209,8 @@ async def build_and_run_workflow(agent, workflow_json: dict):
         task_classes = {}
         for state_name, config in states.items():
             task_classes[state_name] = create_rigid_task(state_name, config, global_nodes, start_state)
-            
+            print(f"Task Classes: \n{task_classes}") #TODO revert
+
         group = TaskGroup(chat_ctx=agent.chat_ctx)
         
         # We add ALL generated rigid tasks into the TaskGroup.
