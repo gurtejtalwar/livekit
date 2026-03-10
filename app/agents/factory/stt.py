@@ -6,7 +6,10 @@ from app.agents import AgentConfig
 class STT:
 
     _providers: Dict[str, Callable[[AgentConfig], object]]  = {
-        "deepgram": lambda cfg: deepgram.STTv2(
+        "deepgram": lambda cfg: deepgram.STT(
+            model=cfg.stt.model
+        ),
+        "deepgram-v2": lambda cfg: deepgram.STTv2(
             model=cfg.stt.model
         ),
         "assemblyai": lambda cfg: assemblyai.STT(),
