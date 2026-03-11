@@ -15,7 +15,7 @@ async def load_agent_runtime_config(agent_id: str, user_data: UserData):
         raise ValueError("Agent not found")
     if agent.status!="active":
         logger.info("Agent is Inactive")
-        raise ValueError("Agent is Inactive")
+        return ValueError("Agent is Inactive")
     config_doc: models.VoiceAgentConfigLivekit = models.VoiceAgentConfigLivekit.objects(
         agentId=agent.id).first()
     voice_doc: models.VoiceAgentVoiceConfig = models.VoiceAgentVoiceConfig.objects(
