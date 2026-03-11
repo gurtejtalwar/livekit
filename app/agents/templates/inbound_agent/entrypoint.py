@@ -56,6 +56,9 @@ async def inbound_entrypoint(ctx: JobContext):
     agent_id = metadata["agent_id"]
     ud.agent_id = agent_id
     ud.user_timezone = ud.user_current_time = None
+    print("*"*10,"\n")
+    print(f"Received Agent Metadata:\n {metadata}\n")
+    print("*"*10,"\n")
     print(f"Starting session with agent_id: {agent_id}")
     remote_participant = await ctx.wait_for_participant()
     if remote_participant.attributes.get("sip.phoneNumber", None):
