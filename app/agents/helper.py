@@ -15,7 +15,8 @@ async def load_agent_runtime_config(agent_id: str, user_data: UserData):
         agentId=agent.id).first()
     voice_doc: models.VoiceAgentVoiceConfig = models.VoiceAgentVoiceConfig.objects(
         agentId=agent.id).first()
-    workflow_doc: models.VoiceAgentWorkflow = models.VoiceAgentWorkflow.objects(agentId=agent.id).first()
+    if config_doc.isWorkflowEnabled:
+        workflow_doc: models.VoiceAgentWorkflow = models.VoiceAgentWorkflow.objects(agentId=agent.id).first()
     identity_doc = models.VoiceAgentIdentity.objects(agentId=agent.id).first()
     advanced_doc = models.VoiceAgentAdvancedSettings.objects(agentId=agent.id).first()
 
