@@ -217,6 +217,7 @@ class VoiceCallDetails(Document):
     version_id = StringField()
 
     status = StringField()
+    call_duration_secs = IntField()
 
     transcript = EmbeddedDocumentListField(TranscriptMessage)
 
@@ -301,6 +302,7 @@ async def on_call_ended(
     ).update_one(
         set__status="completed",
         set__transcript=transcript_docs,
+        set__call_duration_secs=time.time() - session._started_at,
         # set__metadata=ConversationMetadata(**metadata_raw)
         # if metadata_raw
         # else None,
