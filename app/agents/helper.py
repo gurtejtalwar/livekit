@@ -1,9 +1,11 @@
 from bson import ObjectId
-
+import logging
 from app.shared import models
 from app import agents
 from app.agents.prompt import inbound
 from app.agents import UserData
+
+logger = logging.getLogger(__name__)
 
 async def load_agent_runtime_config(agent_id: str, user_data: UserData):
     workflow_doc = None
@@ -11,7 +13,9 @@ async def load_agent_runtime_config(agent_id: str, user_data: UserData):
         id=ObjectId(agent_id)).first()
     if not agent:
         raise ValueError("Agent not found")
-
+    if agent.status!="active":
+        logger.info("Agent is Inactive")
+        raise ValueError("Agent is Inactive")
     config_doc: models.VoiceAgentConfigLivekit = models.VoiceAgentConfigLivekit.objects(
         agentId=agent.id).first()
     voice_doc: models.VoiceAgentVoiceConfig = models.VoiceAgentVoiceConfig.objects(
