@@ -84,6 +84,7 @@ class VoiceAgentConfigLivekit(Document):
 
     purposes = ListField(StringField())
     welcomeMessage = StringField()
+    isWorkflowEnabled = BooleanField()
     isWelcomeMessageEdited = BooleanField()
     gptCustomizationEnabled = BooleanField()
     customErrorMessageEnabled = BooleanField()
