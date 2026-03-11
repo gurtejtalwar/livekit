@@ -6,6 +6,7 @@ from app.agents.prompt import inbound
 from app.agents import UserData
 
 async def load_agent_runtime_config(agent_id: str, user_data: UserData):
+    workflow_doc = None
     agent: models.VoiceAgent = models.VoiceAgent.objects(
         id=ObjectId(agent_id)).first()
     if not agent:
