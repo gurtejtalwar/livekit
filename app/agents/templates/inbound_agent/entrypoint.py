@@ -47,7 +47,7 @@ class BGTasks:
     async def wait_all(self):
         await asyncio.gather(*self.tasks)
 
-@inbound_server.rtc_session(agent_name="inbound-agent")
+@inbound_server.rtc_session(agent_name="bound-agent")
 async def inbound_entrypoint(ctx: JobContext):
     await ctx.connect(auto_subscribe=AutoSubscribe.AUDIO_ONLY)
 
