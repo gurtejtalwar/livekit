@@ -1,6 +1,6 @@
 import logging
 import asyncio
-from typing import Dict, Type
+from typing import Dict, Type, Annotated, Literal
 from livekit.agents import AgentTask, llm
 from app.agents.tools import TOOL_REGISTRY, ToolContext, load_knowledge_base
 
@@ -57,7 +57,6 @@ def _apply_voice_overrides(task: AgentTask, settings: dict):
     """Applies TTS overrides if defined in node settings."""
     overrides = settings.get("voice_overrides", {})
     if overrides and hasattr(task, 'agent') and task.agent and task.agent.tts:
-         # Best-effort call to update options
          kwargs = {}
          if "speed" in overrides:
              kwargs["speed"] = overrides["speed"]
@@ -71,7 +70,7 @@ def _apply_voice_overrides(task: AgentTask, settings: dict):
                  logger.error(f"Failed to apply voice overrides: {e}")
     
 def create_rigid_task(state_name: str, state_config: dict, global_nodes: list, start_state: str) -> Type[AgentTask]:
-    """Rigid mode: Agent strictly follows the graph edges."""
+    """Rigid mode: Agent strictly follows the graph edges using native LiveKit AgentTask."""
     
     class DynamicRigidTask(AgentTask):
         def __init__(self, agent, *args, **kwargs):
@@ -92,13 +91,8 @@ def create_rigid_task(state_name: str, state_config: dict, global_nodes: list, s
                 
             super().__init__(*args, **kwargs)
             self.agent = agent
-            # Pre-resolve tools for this node
             self._node_tools = _resolve_node_tools(agent.config, state_config.get("settings", {}))
             self.agent_config = agent.config
-            
-            # Important: Inject the node's tools onto this task instance
-            # Depending on LiveKit SDK version, tools might need to be exposed via a method or property
-            # For dynamic tools, usually we wrap them in a ToolSet or yield them in llm_node
             
         async def on_enter(self):
             logger.info(f"[Workflow] Entered rigid state: {state_name}")
@@ -125,13 +119,9 @@ def create_rigid_task(state_name: str, state_config: dict, global_nodes: list, s
             self.complete(next_state) 
             return f"Transitioning to {next_state}..."
 
-        # Hack for dynamic tools on classes in LiveKit:
-        # We need to expose the bound tools if the agent queries for them.
         def get_functions(self):
-            funcs = super().get_functions() # Get the @llm.function_tool decorated methods (like transition)
+            funcs = super().get_functions()
             for t in self._node_tools:
-                # Add our dynamic tools
-                # Note: this assumes `t` is a callable that follows LiveKit's tool format
                 if hasattr(t, '_llm_function'):
                     funcs.append(t)
             return funcs
@@ -169,7 +159,6 @@ def create_flex_task(workflow_json: dict) -> Type[AgentTask]:
             logger.info(f"[Workflow] Started Flex workflow at: {self.current_node_name}")
             self._update_prompt_and_tools()
             
-            # Fire an LLM generation to boot up the flex conversation
             if hasattr(self.agent, "session"):
                 logger.info("[Workflow] Triggering initial LLM reply for flex workflow.")
                 self.agent.session.generate_reply()
@@ -178,11 +167,9 @@ def create_flex_task(workflow_json: dict) -> Type[AgentTask]:
             node = workflow_json["states"][self.current_node_name]
             settings = node.get("settings", {})
             
-            # Apply tools and voice overrides
             self._current_node_tools = _resolve_node_tools(self.agent_config, settings)
             _apply_voice_overrides(self, settings)
             
-            # Build prompt
             inst = node.get("instructions", "")
             base = f"You are currently at the '{self.current_node_name}' step. \nInstructions: {inst}\n"
             base += "You have tools available to jump to any other step in the flow if the user preemptively answers it."
@@ -199,9 +186,6 @@ def create_flex_task(workflow_json: dict) -> Type[AgentTask]:
             logger.info(f"[Workflow] Flex Jump: {self.current_node_name} -> {target_node} ({reason})")
             self.current_node_name = target_node
             self._update_prompt_and_tools()
-            
-            # Since the context is immutable mid-flight, we return the new rules directly 
-            # as the tool's result, injecting it into the active conversation path
             return f"Jump successful. You MUST now follow these new instructions strictly: {self._current_prompt}"
 
         def get_functions(self):
@@ -214,7 +198,7 @@ def create_flex_task(workflow_json: dict) -> Type[AgentTask]:
     return DynamicFlexTask
 
 async def build_and_run_workflow(agent, workflow_json: dict):
-    """Parses JSON, builds the graph, and runs the TaskGroup engine asynchronously."""
+    """Parses JSON, builds AgentTasks, and runs the workflow engine natively asynchronously."""
     mode = workflow_json.get("mode", "rigid")
     global_nodes = workflow_json.get("global_nodes", [])
     states = workflow_json.get("states", {})
