@@ -244,14 +244,15 @@ async def on_call_arrived(config: AgentConfig, session: AgentSession) -> ObjectI
     """
     #TODO HAZARD REDUNDANCY
     if config.call_type == "inbound":
-        config = await update_live_caller_context(config)
+        config = await update_sip_context(config)
         return await inbound_handler(config, session)
     if config.call_type == "outbound":
-        config = await update_live_caller_context(config)
+        config = await update_sip_context(config)
         return await inbound_handler(config, session)
     if config.call_type == "test-inbound":
         return await test_inbound_handler(config, session)
     if config.call_type == "test-outbound":
+        config = await update_sip_context(config)
         return await test_inbound_handler(config, session)
 
 
@@ -512,8 +513,6 @@ async def test_inbound_handler(config: AgentConfig, session: AgentSession):
         call_type=config.call_type,
         start_time_unix_secs=session._started_at,
         status="in_progress",
-        agent_phone=config.call_details.call_to,
-        customer_phone=config.call_details.call_from,
     ).save()
 
     VoiceCallDetails(
@@ -575,7 +574,7 @@ async def test_outbound_handler(config: AgentConfig, session: AgentSession):
 
 
 #TODO REDUNDANT
-async def update_live_caller_context(config: AgentConfig):
+async def update_sip_context(config: AgentConfig):
     # 1. Identify the SIP Participant
     # Usually, in a telephony call, there is only one remote participant
     caller = None
