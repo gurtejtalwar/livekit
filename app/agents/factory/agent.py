@@ -80,9 +80,7 @@ class InboundAgent(Agent):
 
     async def on_enter(self):
         logger.info("Node: on_enter called")
-        await update_config_with_caller_context(self.config)
         await call_models.on_call_arrived(self.config, self.session)
-        
         if getattr(self.config, 'workflow_graph_json', None):
             logger.info("Initializing workflow engine from JSON payload.")
             await build_and_run_workflow(self, self.config.workflow_graph_json)
@@ -204,95 +202,3 @@ class AgentFactory:
         except Exception as e:
             return f"Error: {str(e)}"
 
-#TODO Data redundancy, can be fetched directly from context
-async def update_config_with_caller_context(config: AgentConfig) -> AgentConfig:
-    #TODO HAZARD REDUNDANCY
-    return await update_inbound_caller_context(config)
-#TODO REDUNDANT
-async def update_inbound_caller_context(config: AgentConfig):
-    # 1. Identify the SIP Participant
-    # Usually, in a telephony call, there is only one remote participant
-    caller = None
-    for p in config.ctx.room.remote_participants.values():
-        if p.identity.startswith("sip_"):
-            caller = p
-            break
-
-    # 2. Extract the IDs from attributes
-    trunk_id = None
-    dispatch_rule_id = None
-    
-    if caller:
-        attrs = caller.attributes or {}
-
-        livekit_call_id = attrs.get("sip.callID")
-        trunk_id = attrs.get("sip.trunkID")
-        dispatch_rule_id = attrs.get("sip.ruleID")
-        call_from = attrs.get("sip.phoneNumber")
-        call_to = attrs.get("sip.trunkPhoneNumber")
-        hostname = attrs.get("sip.hostname")
-        twilio_account_sid = attrs.get("sip.twilio.accountSid")
-        twilio_call_sid = attrs.get("sip.twilio.callSid")
-        logger.info(f"Inbound Call: Trunk={trunk_id}, Dispatch={dispatch_rule_id}")
-   
-    
-        # Example: resolve SIP details from LiveKit JobContext
-        config.call_details = CallDetails(
-            livekit_call_id=livekit_call_id,
-            trunk_id=trunk_id,
-            dispatch_rule=dispatch_rule_id,
-            call_to=call_to,
-            call_from=call_from,
-            twilio_call_sid=twilio_call_sid,
-            twilio_account_sid=twilio_account_sid,
-            hostname=hostname,
-        )
-        
-    return config
-
-async def update_outbound_caller_context(config: AgentConfig):
-    # 1. Identify the SIP Participant
-    # Usually, in a telephony call, there is only one remote participant
-    caller = None
-    for p in config.ctx.room.remote_participants.values():
-        if p.identity.startswith("sip_"):
-            caller = p
-            break
-
-    # 2. Extract the IDs from attributes
-    trunk_id = None
-    dispatch_rule_id = None
-    
-    if caller:
-        attrs = caller.attributes or {}
-
-        livekit_call_id = attrs.get("sip.callID")
-        trunk_id = attrs.get("sip.trunkID")
-        dispatch_rule_id = attrs.get("sip.ruleID")
-        call_from = attrs.get("sip.phoneNumber")
-        call_to = attrs.get("sip.trunkPhoneNumber")
-        hostname = attrs.get("sip.hostname")
-        twilio_account_sid = attrs.get("sip.twilio.accountSid")
-        twilio_call_sid = attrs.get("sip.twilio.callSid")
-        logger.info(f"Inbound Call: Trunk={trunk_id}, Dispatch={dispatch_rule_id}")
-   
-    
-        # Example: resolve SIP details from LiveKit JobContext
-        config.call_details = CallDetails(
-            livekit_call_id=livekit_call_id,
-            trunk_id=trunk_id,
-            dispatch_rule=dispatch_rule_id,
-            call_to=call_to,
-            call_from=call_from,
-            twilio_call_sid=twilio_call_sid,
-            twilio_account_sid=twilio_account_sid,
-            hostname=hostname,
-        )
-        
-    return config
-
-async def update_test_inbound_caller_context(config: AgentConfig):
-    pass
-
-async def update_test_outbound_caller_context(config: AgentConfig):
-    pass

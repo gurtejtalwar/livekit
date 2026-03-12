@@ -23,7 +23,7 @@ from livekit.agents import llm, AgentSession
 from livekit.agents.metrics import UsageSummary
 
 from app.shared import schemas
-from app.agents import AgentConfig
+from app.agents import AgentConfig, CallDetails
 from app.models import db
 
 
@@ -184,7 +184,7 @@ class Models(EmbeddedDocument):
     llm = EmbeddedDocumentField(LLMModel)
     tts = EmbeddedDocumentField(TTSModel)
 class LivekitMetadata(EmbeddedDocument):
-    sip = EmbeddedDocumentField(SipMetadata)
+    sip = DictField()
     usage = EmbeddedDocumentField(UsageSummaryEmbedded)
     models  = EmbeddedDocumentField(Models)
 
@@ -243,14 +243,16 @@ async def on_call_arrived(config: AgentConfig, session: AgentSession) -> ObjectI
     Extracts minimal data from config + session.
     """
     #TODO HAZARD REDUNDANCY
-    # if config.call_type == "inbound":
-    return await inbound_handler(config, session)
-    # if config.call_type == "outbound":
-    #     return await outbound_handler(config, session)
-    # if config.call_type == "test-inbound":
-    #     return await test_inbound_handler(config, session)
-    # if config.call_type == "test-outbound":
-    #     return await test_outbound_handler(config, session)
+    if config.call_type == "inbound":
+        config = await update_live_caller_context(config)
+        return await inbound_handler(config, session)
+    if config.call_type == "outbound":
+        config = await update_live_caller_context(config)
+        return await inbound_handler(config, session)
+    if config.call_type == "test-inbound":
+        return await test_inbound_handler(config, session)
+    if config.call_type == "test-outbound":
+        return await test_inbound_handler(config, session)
 
 
 async def on_call_ended(
@@ -466,7 +468,8 @@ async def save_analysis(call_id: str, analysis: schemas.PostCallAnalysis):
 
 
 async def inbound_handler(config: AgentConfig, session: AgentSession):
-
+    participant = next(iter(session._room_io._room._remote_participants.values()), None)
+    sip_attrs = participant.attributes if participant else None
     call = VoiceCalls(
         user_id=config.user_id,
         agent_id=config.agent_id,
@@ -487,14 +490,7 @@ async def inbound_handler(config: AgentConfig, session: AgentSession):
         agent_name=config.agent_name,
         call_type=config.call_type,
         lk_metadata=LivekitMetadata(
-            sip=SipMetadata(
-                local_participant_sid=session.room_io.room.local_participant.sid,
-                remote_participant_sid=list(session.room_io.room.remote_participants.values())[0].sid,
-                trunk_id=config.call_details.trunk_id,
-                dispatch_rule=config.call_details.dispatch_rule,
-                call_to=config.call_details.call_to,
-                call_from=config.call_details.call_from,
-            )
+            sip=sip_attrs,
         ),
         # branch_id=getattr(config, "branch_id", None),
         # version_id=getattr(config, "version_id", None),
@@ -576,3 +572,46 @@ async def test_outbound_handler(config: AgentConfig, session: AgentSession):
 
     session.userdata.call_id = str(call.id)
     return call.id
+
+
+#TODO REDUNDANT
+async def update_live_caller_context(config: AgentConfig):
+    # 1. Identify the SIP Participant
+    # Usually, in a telephony call, there is only one remote participant
+    caller = None
+    for p in config.ctx.room.remote_participants.values():
+        if p.identity.startswith("sip_"):
+            caller = p
+            break
+
+    # 2. Extract the IDs from attributes
+    trunk_id = None
+    dispatch_rule_id = None
+    
+    if caller:
+        attrs = caller.attributes or {}
+
+        livekit_call_id = attrs.get("sip.callID")
+        trunk_id = attrs.get("sip.trunkID")
+        dispatch_rule_id = attrs.get("sip.ruleID")
+        call_from = attrs.get("sip.phoneNumber")
+        call_to = attrs.get("sip.trunkPhoneNumber")
+        hostname = attrs.get("sip.hostname")
+        twilio_account_sid = attrs.get("sip.twilio.accountSid")
+        twilio_call_sid = attrs.get("sip.twilio.callSid")
+        logger.info(f"Inbound Call: Trunk={trunk_id}, Dispatch={dispatch_rule_id}")
+   
+    
+        # Example: resolve SIP details from LiveKit JobContext
+        config.call_details = CallDetails(
+            livekit_call_id=livekit_call_id,
+            trunk_id=trunk_id,
+            dispatch_rule=dispatch_rule_id,
+            call_to=call_to,
+            call_from=call_from,
+            twilio_call_sid=twilio_call_sid,
+            twilio_account_sid=twilio_account_sid,
+            hostname=hostname,
+        )
+        
+    return config

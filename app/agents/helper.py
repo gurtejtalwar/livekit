@@ -15,16 +15,18 @@ async def load_agent_runtime_config(agent_id: str, user_data: UserData):
         raise ValueError("Agent not found")
     if agent.status!="active":
         logger.info("Agent is Inactive")
-        return ValueError("Agent is Inactive")
+        return ValueError("Agent is Inactive") #TODO need to find error interceptor for LK instead of returning
+    
     config_doc: models.VoiceAgentConfigLivekit = models.VoiceAgentConfigLivekit.objects(
         agentId=agent.id).first()
+    identity_doc: models.VoiceAgentIdentity = models.VoiceAgentIdentity.objects(agentId=agent.id).first()
+    advanced_doc = models.VoiceAgentAdvancedSettings.objects(agentId=agent.id).first()
     voice_doc: models.VoiceAgentVoiceConfig = models.VoiceAgentVoiceConfig.objects(
         agentId=agent.id).first()
+
     if config_doc.isWorkflowEnabled:
         workflow_doc: models.VoiceAgentWorkflow = models.VoiceAgentWorkflow.objects(agentId=agent.id).first()
-    identity_doc = models.VoiceAgentIdentity.objects(agentId=agent.id).first()
-    advanced_doc = models.VoiceAgentAdvancedSettings.objects(agentId=agent.id).first()
-
+    
     # ---------- SYSTEM PROMPT ----------
     system_prompt = (
         config_doc.systemPrompt
@@ -85,7 +87,7 @@ async def load_agent_runtime_config(agent_id: str, user_data: UserData):
         user_id=str(user_data.user_id),
         agent_id=str(agent.id),
         agent_name=agent.agentName,
-        knowledge_base_id=agent.knowledgeBaseId,
+        knowledge_base_id=identity_doc.resourceCentreId,
         system_prompt=lk_prompt,
         workflow_graph_json=workflow_doc.workflow_config if workflow_doc else None,
         stt=agents.STTConfig(
