@@ -16,6 +16,7 @@ from mongoengine import (
     EmbeddedDocument,
     EmbeddedDocumentField,  
     EmbeddedDocumentListField,
+    ObjectIdField,
     ListField,
     DictField,
 )
@@ -69,7 +70,7 @@ class VoiceCalls(Document):
     call_type = StringField()
 
     # identifiers
-    agent_id = StringField()
+    agent_id = ObjectIdField()
     agent_name = StringField()
 
     branch_id = StringField(null=True) #FLAG
@@ -209,7 +210,7 @@ class VoiceCallDetails(Document):
     call_id = StringField(required=True, unique=True)
     user_id = ObjectIdField()
 
-    agent_id = StringField()
+    agent_id = ObjectIdField()
     agent_name = StringField()
     call_type = StringField()
 
@@ -253,7 +254,7 @@ async def on_call_arrived(config: AgentConfig, session: AgentSession) -> ObjectI
         return await test_inbound_handler(config, session)
     if config.call_type == "test-outbound":
         config = await update_sip_context(config)
-        return await test_inbound_handler(config, session)
+        return await inbound_handler(config, session)
 
 
 async def on_call_ended(
@@ -505,7 +506,8 @@ async def outbound_handler(config, session):
     pass
 
 async def test_inbound_handler(config: AgentConfig, session: AgentSession):
-
+    participant = next(iter(session._room_io._room._remote_participants.values()), None)
+    sip_attrs = participant.attributes if participant else None
     call = VoiceCalls(
         user_id=config.user_id,
         agent_id=config.agent_id,
@@ -521,57 +523,14 @@ async def test_inbound_handler(config: AgentConfig, session: AgentSession):
         agent_id=config.agent_id,
         agent_name=config.agent_name,
         call_type=config.call_type,
-        # lk_metadata=LivekitMetadata(
-        #     sip=SipMetadata(
-        #         local_participant_sid=session.room_io.room.local_participant.sid,
-        #         remote_participant_sid=list(session.room_io.room.remote_participants.values())[0].sid,
-        #         trunk_id=config.call_details.trunk_id,
-        #         dispatch_rule=config.call_details.dispatch_rule,
-        #         call_to=config.call_details.call_to,
-        #         call_from=config.call_details.call_from,
-        #     )
-        # ),
+        lk_metadata=LivekitMetadata(
+            sip=sip_attrs
+        ),
         status="in_progress",
     ).save()
 
     session.userdata.call_id = str(call.id)
     return call.id
-
-async def test_outbound_handler(config: AgentConfig, session: AgentSession):
-
-    call = VoiceCalls(
-        user_id=config.user_id,
-        agent_id=config.agent_id,
-        agent_name=config.agent_name,
-        call_type=config.call_type,
-        start_time_unix_secs=session._started_at,
-        status="in_progress",
-        agent_phone=config.call_details.call_to,
-        customer_phone=config.call_details.call_from,
-    ).save()
-
-    VoiceCallDetails(
-        call_id=str(call.id),                 # internal linkage
-        user_id=config.user_id,
-        agent_id=config.agent_id,
-        agent_name=config.agent_name,
-        call_type=config.call_type,
-        # lk_metadata=LivekitMetadata(
-        #     sip=SipMetadata(
-        #         local_participant_sid=session.room_io.room.local_participant.sid,
-        #         remote_participant_sid=list(session.room_io.room.remote_participants.values())[0].sid,
-        #         trunk_id=config.call_details.trunk_id,
-        #         dispatch_rule=config.call_details.dispatch_rule,
-        #         call_to=config.call_details.call_to,
-        #         call_from=config.call_details.call_from,
-        #     )
-        # ),
-        status="in_progress",
-    ).save()
-
-    session.userdata.call_id = str(call.id)
-    return call.id
-
 
 #TODO REDUNDANT
 async def update_sip_context(config: AgentConfig):
