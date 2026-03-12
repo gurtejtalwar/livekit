@@ -84,7 +84,7 @@ async def load_agent_runtime_config(agent_id: str, user_data: UserData):
     )
 
     return agents.AgentConfig(
-        user_id=str(user_data.user_id),
+        user_id=str(agent.userId),
         agent_id=str(agent.id),
         agent_name=agent.agentName,
         knowledge_base_id=identity_doc.resourceCentreId,
