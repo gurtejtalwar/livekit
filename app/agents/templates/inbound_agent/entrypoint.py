@@ -122,8 +122,8 @@ async def inbound_entrypoint(ctx: JobContext):
 
     async def post_call_tasks():
         await log_usage()
-        await post_call_analysis(session)
         await call_models.on_call_ended(agent_config, session)
+        await post_call_analysis(session)
 
     ctx.add_shutdown_callback(post_call_tasks)
 
