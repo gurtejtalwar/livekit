@@ -158,6 +158,7 @@ async def inbound_entrypoint(ctx: JobContext):
 
     async def post_call_tasks():
         await log_usage()
+        await wait_for_egress()
         await call_models.on_call_ended(agent_config, session, recording_url)
 
 
