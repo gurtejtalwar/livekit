@@ -199,6 +199,7 @@ class Analysis(EmbeddedDocument):
     summary = StringField()
     follow_up_trigger = BooleanField()
     lead_type = StringField()
+    title = StringField()
 
 class VoiceCallDetails(Document):
     meta = {
