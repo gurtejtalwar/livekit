@@ -292,74 +292,52 @@ class WarmTransferTask(AgentTask[WarmTransferResult]):
             try:
                 from livekit.protocol import models, room as room_proto
                 
-                # Switch STT focus back to the caller (standard behavior)
-                if hasattr(self.session, "_room_io") and self.session._room_io:
-                    self.session._room_io.set_participant(caller_identity)
-
-                # 1. Restore permissions for CALLER
-                await job_ctx.api.room.update_participant(
-                    room_proto.UpdateParticipantRequest(
-                        room=self._caller_room.name,
-                        identity=caller_identity,
-                        permission=models.ParticipantPermission(
-                            can_subscribe=True, 
-                            can_publish=True,
+                # Dynamically identify caller and supervisor
+                supervisor_identity = self._human_agent_identity
+                caller_identity = None
+                for p in self._caller_room.remote_participants.values():
+                    if p.identity != supervisor_identity and p.kind in (
+                        rtc.ParticipantKind.PARTICIPANT_KIND_SIP,
+                        rtc.ParticipantKind.PARTICIPANT_KIND_STANDARD,
+                    ):
+                        caller_identity = p.identity
+                        break
+                
+                logger.info(f"Handoff Bridge Debug: Supervisor={supervisor_identity}, Identified Caller={caller_identity}")
+                
+                # 1. Restore permissions for both Humans (Full Publish/Subscribe)
+                for identity in [caller_identity, supervisor_identity]:
+                    if not identity: continue
+                    await job_ctx.api.room.update_participant(
+                        room_proto.UpdateParticipantRequest(
+                            room=self._caller_room.name,
+                            identity=identity,
+                            permission=models.ParticipantPermission(
+                                can_subscribe=True, 
+                                can_publish=True,
+                            )
                         )
                     )
-                )
 
-                # 2. Restore permissions for SUPERVISOR
-                await job_ctx.api.room.update_participant(
-                    room_proto.UpdateParticipantRequest(
-                        room=self._caller_room.name,
-                        identity=self._human_agent_identity,
-                        permission=models.ParticipantPermission(
-                            can_subscribe=True, 
-                            can_publish=True,
+                # 2. Wait for propagation
+                await asyncio.sleep(1.0)
+
+                # 3. Explicitly resubscribe BOTH humans to EVERYTHING in the room
+                # In LiveKit, an empty track_sids list with subscribe=True sends a "subscribe to all" command
+                # which should clear any previous manual unsubscriptions.
+                for target_identity in [caller_identity, supervisor_identity]:
+                    if not target_identity: continue
+                    
+                    logger.debug(f"Forcing full resubscription for {target_identity}")
+                    await job_ctx.api.room.update_subscriptions(
+                        room_proto.UpdateSubscriptionsRequest(
+                            room=self._caller_room.name,
+                            identity=target_identity,
+                            subscribe=True, # No track_sids = All tracks
                         )
                     )
-                )
-                
-                # 3. Gather ALL audio track SIDs to ensure explicit resubscription
-                all_audio_sids = []
-                supervisor = self._caller_room.remote_participants.get(self._human_agent_identity)
-                caller = self._caller_room.remote_participants.get(caller_identity)
-                
-                # AI's audio tracks
-                for tp in self._caller_room.local_participant.track_publications.values():
-                    if tp.kind == rtc.TrackKind.KIND_AUDIO:
-                        all_audio_sids.append(tp.sid)
-                
-                if supervisor:
-                    for tp in supervisor.track_publications.values():
-                        if tp.kind == rtc.TrackKind.KIND_AUDIO:
-                            all_audio_sids.append(tp.sid)
-                
-                if caller:
-                    for tp in caller.track_publications.values():
-                        if tp.kind == rtc.TrackKind.KIND_AUDIO:
-                            all_audio_sids.append(tp.sid)
-
-                # 4. Explicitly resubscribe BOTH humans to ALL audio tracks
-                # This ensures the override from the briefing phase is cleared.
-                await job_ctx.api.room.update_subscriptions(
-                    room_proto.UpdateSubscriptionsRequest(
-                        room=self._caller_room.name,
-                        identity=caller_identity,
-                        track_sids=all_audio_sids,
-                        subscribe=True, 
-                    )
-                )
-
-                await job_ctx.api.room.update_subscriptions(
-                    room_proto.UpdateSubscriptionsRequest(
-                        room=self._caller_room.name,
-                        identity=self._human_agent_identity,
-                        track_sids=all_audio_sids,
-                        subscribe=True, 
-                    )
-                )
-                logger.debug(f"Handoff bridge complete: Caller {caller_identity} <-> Supervisor {self._human_agent_identity}")
+                        
+                logger.info(f"Full-Duplex Handoff bridge applied for {caller_identity} and {supervisor_identity}")
             except Exception as e:
                 logger.error(f"Failed to restore permissions for caller: {e}")
 
