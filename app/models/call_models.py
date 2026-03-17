@@ -233,7 +233,7 @@ class VoiceCallDetails(Document):
     has_audio = BooleanField()
     has_user_audio = BooleanField()
     has_response_audio = BooleanField()
-
+    recording_url = StringField()
     voice_summary = StringField()
 
     created_at = DateTimeField(default=datetime.utcnow)
@@ -262,6 +262,7 @@ async def on_call_arrived(config: AgentConfig, session: AgentSession) -> ObjectI
 async def on_call_ended(
     config: AgentConfig,
     session: AgentSession,
+    recording_url: str
 ):
     """
     Called when call completes.
@@ -309,9 +310,7 @@ async def on_call_ended(
         set__status="completed",
         set__transcript=transcript_docs,
         set__call_duration_secs=time.time() - session._started_at,
-        # set__metadata=ConversationMetadata(**metadata_raw)
-        # if metadata_raw
-        # else None,
+        set__recording_url= recording_url,
         set__updated_at=datetime.utcnow(),
     )
 

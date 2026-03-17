@@ -20,7 +20,7 @@ async def load_agent_runtime_config(agent_id: str, user_data: UserData):
     config_doc: models.VoiceAgentConfigLivekit = models.VoiceAgentConfigLivekit.objects(
         agentId=agent.id).first()
     identity_doc: models.VoiceAgentIdentity = models.VoiceAgentIdentity.objects(agentId=agent.id).first()
-    advanced_doc = models.VoiceAgentAdvancedSettings.objects(agentId=agent.id).first()
+    advanced_doc: models.VoiceAgentAdvancedSettings = models.VoiceAgentAdvancedSettings.objects(agentId=agent.id).first()
     voice_doc: models.VoiceAgentVoiceConfig = models.VoiceAgentVoiceConfig.objects(
         agentId=agent.id).first()
 
@@ -109,6 +109,8 @@ async def load_agent_runtime_config(agent_id: str, user_data: UserData):
         ),
         tools=tools,
         greeting=greeting,
+        allow_recording=advanced_doc.privacy["audioRecording"],
+        # allow_interruptions=
     )
 
 

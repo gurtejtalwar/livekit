@@ -1,4 +1,5 @@
 import asyncio
+import uuid
 import logging
 import json
 
@@ -52,34 +53,6 @@ class BGTasks:
 async def inbound_entrypoint(ctx: JobContext):
     await ctx.connect(auto_subscribe=AutoSubscribe.AUDIO_ONLY)
 
-    try:
-        # Use explicit file_type to ensure the protobuf is well-formed for the server
-        file_output = api.EncodedFileOutput(
-            file_type=api.EncodedFileType.MP3,
-            filepath=f"recordings/inbound_{ctx.room.name}.mp3",
-            s3=api.S3Upload(
-                access_key=settings.AWS_ACCESS_KEY,
-                secret=settings.AWS_SECRET_KEY,
-                bucket=settings.AWS_BUCKET_NAME_RECORDING,
-                endpoint=settings.AWS_BUCKET_ENDPOINT_RECORDING,
-                region=settings.AWS_REGION
-            )
-        )
-
-        # 2. Pass that list to the RoomCompositeEgressRequest
-        await ctx.api.egress.start_room_composite_egress(
-            api.RoomCompositeEgressRequest(
-                room_name=ctx.room.name,
-                audio_only=True,
-                file_outputs=[file_output] # This must be a list
-            )
-        )
-        logger.info(f"Started egress for room {ctx.room.name}")
-    except Exception as e:
-        logger.exception("Failed to start egress: %s", e)
-
-
-
     # Example: resolve from headers / room metadata / API
     metadata = json.loads(ctx.job.metadata)
     agent_id = metadata["agent_id"]
@@ -95,6 +68,40 @@ async def inbound_entrypoint(ctx: JobContext):
     agent_config = await AgentFactory.load_agent_config(ud,agent_id)
     agent_config.call_type = metadata["call_type"]
     agent_config.ctx = ctx
+
+    # Start Egress Service if recording allowed
+    recording_url = None
+    if agent_config.allow_recording is True:
+        recording_uid = uuid.uuid4()
+        filepath = f"recordings/{recording_uid}.mp3"
+        recording_url= f"{settings.AWS_BUCKET_ENDPOINT_RECORDING}/{filepath}"
+        try:
+            # Use explicit file_type to ensure the protobuf is well-formed for the server
+            file_output = api.EncodedFileOutput(
+                file_type=api.EncodedFileType.MP3,
+                filepath=f"recordings/inbound_{ctx.room.name}.mp3",
+                s3=api.S3Upload(
+                    access_key=settings.AWS_ACCESS_KEY,
+                    secret=settings.AWS_SECRET_KEY,
+                    bucket=settings.AWS_BUCKET_NAME_RECORDING,
+                    endpoint=settings.AWS_BUCKET_ENDPOINT_RECORDING,
+                    region=settings.AWS_REGION
+                )
+            )
+
+            # 2. Pass that list to the RoomCompositeEgressRequest
+            egress_info = await ctx.api.egress.start_room_composite_egress(
+                api.RoomCompositeEgressRequest(
+                    room_name=ctx.room.name,
+                    audio_only=True,
+                    file_outputs=[file_output] # This must be a list
+                )
+            )
+            logger.info(f"Started egress for room {ctx.room.name}")
+        except Exception as e:
+            logger.exception("Failed to start egress: %s", e)
+
+
     session = AgentSession(
         preemptive_generation=True, 
         userdata=ud,
@@ -151,7 +158,10 @@ async def inbound_entrypoint(ctx: JobContext):
 
     async def post_call_tasks():
         await log_usage()
-        await call_models.on_call_ended(agent_config, session)
+        await call_models.on_call_ended(agent_config, session, recording_url)
+
+
+
         await post_call_analysis(session)
 
     ctx.add_shutdown_callback(post_call_tasks)
@@ -173,7 +183,15 @@ async def inbound_entrypoint(ctx: JobContext):
         await session.say(agent_config.greeting, allow_interruptions=False)
         # await session.generate_reply(instructions="Confirm the user is connected and greet them warmly.")
 
-    
+    async def wait_for_egress():
+        for _ in range(10): # Try for 30 seconds
+            status_info = await ctx.api.egress.list_egress(egress_id=egress_info.egress_id)
+            current = status_info[0]
+            
+            if current.status == api.EgressStatus.EGRESS_COMPLETE:
+                return
+            await asyncio.sleep(3)
+
 async def post_call_analysis(session: AgentSession):
     headers = {
         "Content-Type": "application/json",

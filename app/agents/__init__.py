@@ -83,6 +83,7 @@ class AgentConfig(BaseModel):
 
     # Behavior
     allow_interruptions: bool = True
+    allow_recording: bool
 
     greeting: str = "Hello! How can I assist you today?"
     # Livekit JobContext
