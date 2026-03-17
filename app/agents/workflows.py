@@ -189,6 +189,11 @@ class WarmTransferTask(AgentTask[WarmTransferResult]):
             # Identify the supervisor participant who just joined
             supervisor_identity = self._human_agent_identity
             
+            # Switch AI focus to the supervisor so its "ears" (STT) hear the supervisor
+            if hasattr(self.session, "_room_io") and self.session._room_io:
+                self.session._room_io.set_participant(supervisor_identity)
+                logger.debug(f"Switched AI STT focus to supervisor {supervisor_identity}")
+
             # Isolate caller and supervisor
             if caller_identity:
                 try:
@@ -198,17 +203,21 @@ class WarmTransferTask(AgentTask[WarmTransferResult]):
                     # Caller should only hear hold music
                     caller_unsubs = []
                     
-                    # AI's tracks (unsubs from Microphone, but NOT background audio if possible)
-                    for track_pub in self._caller_room.local_participant.published_tracks.values():
-                        # We want to keep hold music (usually name contains 'background' or different source)
-                        # AI Voice is usually the primary microphone track.
+                    # AI's tracks (unsubs from Microphone, but NOT background audio)
+                    for track_pub in self._caller_room.local_participant.track_publications.values():
                         if track_pub.source == rtc.TrackSource.SOURCE_MICROPHONE:
                             caller_unsubs.append(track_pub.sid)
                             
                     # Supervisor voice track
                     supervisor = self._caller_room.remote_participants.get(supervisor_identity)
                     if supervisor:
-                        for track_pub in supervisor.tracks.values():
+                        # Wait a moment for supervisor to actually publish tracks
+                        for _ in range(10): # Max 1s wait
+                            if any(t.kind == rtc.TrackKind.KIND_AUDIO for t in supervisor.track_publications.values()):
+                                break
+                            await asyncio.sleep(0.1)
+
+                        for track_pub in supervisor.track_publications.values():
                             if track_pub.kind == rtc.TrackKind.KIND_AUDIO:
                                 caller_unsubs.append(track_pub.sid)
 
@@ -223,11 +232,11 @@ class WarmTransferTask(AgentTask[WarmTransferResult]):
                         )
                     
                     # 2. Isolate SUPERVISOR from Hold Music
-                    # Supervisor should hear AI and Caller (wait, supervisor only needs AI for now)
+                    # Supervisor should hear AI and Caller
                     # Supervisor should NOT hear Hold Music (Background Audio)
                     supervisor_unsubs = []
-                    for track_pub in self._caller_room.local_participant.published_tracks.values():
-                        # If it's NOT the primary microphone track, it's likely hold music
+                    for track_pub in self._caller_room.local_participant.track_publications.values():
+                        # If it's NOT the primary microphone track, it's hold music
                         if track_pub.source != rtc.TrackSource.SOURCE_MICROPHONE:
                             supervisor_unsubs.append(track_pub.sid)
                             
@@ -282,6 +291,11 @@ class WarmTransferTask(AgentTask[WarmTransferResult]):
         if caller_identity:
             try:
                 from livekit.protocol import models, room as room_proto
+                
+                # Switch STT focus back to the caller (standard behavior)
+                if hasattr(self.session, "_room_io") and self.session._room_io:
+                    self.session._room_io.set_participant(caller_identity)
+
                 # 1. Restore permissions
                 await job_ctx.api.room.update_participant(
                     room_proto.UpdateParticipantRequest(
