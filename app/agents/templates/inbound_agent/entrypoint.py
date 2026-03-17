@@ -186,7 +186,8 @@ async def inbound_entrypoint(ctx: JobContext):
 
     async def wait_for_egress():
         for _ in range(10): # Try for 30 seconds
-            status_info = await ctx.api.egress.list_egress(egress_id=egress_info.egress_id)
+            req = api.ListEgressRequest(egress_id=egress_info.egress_id)
+            status_info = await ctx.api.egress.list_egress(req)
             current = status_info[0]
             
             if current.status == api.EgressStatus.EGRESS_COMPLETE:
