@@ -209,7 +209,7 @@ class VoiceCallDetails(Document):
         ],
     }
 
-    call_id = StringField(required=True, unique=True)
+    call_id = ObjectIdField(required=True, unique=True)
     user_id = ObjectIdField()
 
     agent_id = ObjectIdField()
