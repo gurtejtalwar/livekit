@@ -7,6 +7,7 @@ from dataclasses import dataclass
 from typing import TYPE_CHECKING, Optional, Union, cast
 
 from livekit import api, rtc
+from livekit.protocol import room as proto_room
 
 from livekit.agents import llm, stt, tts, utils, vad
 from livekit.agents.job import get_job_context
@@ -134,71 +135,85 @@ class WarmTransferTask(AgentTask[WarmTransferResult]):
         return BASE_INSTRUCTIONS.format(conversation_history=prev_convo) + extra_instructions
 
     async def on_enter(self) -> None:
-        job_ctx = get_job_context()
-        self._caller_room = job_ctx.room
-        
+        logger.info(f"WarmTransferTask: on_enter calling {self._target_phone_number}")
+
         # 1. Start Hold Music for the Caller
         if self._hold_audio is not None:
-            await self._background_audio.start(room=self._caller_room)
+            await self._background_audio.start(room=self.session.room, agent_session=self.session)
             self._hold_audio_handle = self._background_audio.play(self._hold_audio, loop=True)
 
-        # 2. Isolate the caller from hearing the human agent or being heard
-        # Find the caller's identity. The caller is typically a SIP or STANDARD participant in the room.
-        # There should only be one remote participant if this is a 1:1 call.
-        caller_identity = None
-        for participant in self._caller_room.remote_participants.values():
-            if participant.kind in (
-                rtc.ParticipantKind.PARTICIPANT_KIND_SIP,
-                rtc.ParticipantKind.PARTICIPANT_KIND_STANDARD,
-            ):
-                caller_identity = participant.identity
-                break
-        
-        if caller_identity:
-            try:
-                from livekit.protocol import models, room as room_proto
-                await job_ctx.api.room.update_participant(
-                    room_proto.UpdateParticipantRequest(
-                        room=self._caller_room.name,
-                        identity=caller_identity,
-                        permission=models.ParticipantPermission(
-                            can_subscribe=False, 
-                            can_publish=False,
-                        )
-                    )
-                )
-                logger.debug(f"Isolated caller {caller_identity}")
-            except Exception as e:
-                logger.error(f"Failed to isolate caller: {e}")
-        else:
-            logger.warning("Could not find caller identity to isolate.")
-
         try:
-            # 3. Start the transfer process (Dial human supervisor into this room)
-            # The AI is still responding, so after dialing, it should naturally summarize to the human agent.
+            # Dial the human supervisor
             dial_human_agent_task = asyncio.create_task(self._dial_human_agent())
             
+            # 2. Selective Isolation for Privacy & Hold Music
+            # Use LiveKit API to manage track-level subscriptions
+            api_url = os.getenv("LIVEKIT_URL", "").replace("wss://", "https://")
+            lkapi = api.LiveKitAPI(
+                url=api_url,
+                api_key=os.getenv("LIVEKIT_API_KEY"),
+                api_secret=os.getenv("LIVEKIT_API_SECRET")
+            )
+
+            # Find Caller
+            caller = next((p for p in self.session.room.remote_participants.values() if p.identity != self._human_agent_identity), None)
+            if caller:
+                # Isolate Caller from AI Speech (so they only hear background audio)
+                speech_track_sid = None
+                for pub in self.session.room.local_participant.tracks.values():
+                    if pub.name != "background_audio" and pub.kind == rtc.TrackKind.KIND_AUDIO:
+                        speech_track_sid = pub.sid
+                        break
+                
+                if speech_track_sid:
+                    await lkapi.room.update_subscriptions(
+                        proto_room.UpdateSubscriptionsRequest(
+                            room=self.session.room.name,
+                            identity=caller.identity,
+                            track_sids=[speech_track_sid],
+                            subscribe=False
+                        )
+                    )
+                
+                # Unsubscribe AI Agent from Caller (to prevent accidental interruptions during summary)
+                caller_track_sid = next((t.sid for t in caller.tracks.values() if t.kind == rtc.TrackKind.KIND_AUDIO), None)
+                if caller_track_sid:
+                    await lkapi.room.update_subscriptions(
+                        proto_room.UpdateSubscriptionsRequest(
+                            room=self.session.room.name,
+                            identity=self.session.room.local_participant.identity,
+                            track_sids=[caller_track_sid],
+                            subscribe=False
+                        )
+                    )
+            
+            await lkapi.aclose()
+
+            # Wait for human to answer
             done, _ = await asyncio.wait(
                 (dial_human_agent_task, self._human_agent_failed_fut),
                 return_when=asyncio.FIRST_COMPLETED,
             )
             
-            if dial_human_agent_task not in done:
-                raise RuntimeError("Dialing failed or timed out")
-            
-            # Stop the hold music as soon as human answers
-            if self._hold_audio_handle:
-                self._hold_audio_handle.stop()
-                self._hold_audio_handle = None
+            if dial_human_agent_task in done:
+                logger.info(f"Human agent answered: {self._human_agent_identity}")
+                
+                # 3. Switch AI Focus to Human Agent (Ensures human's mic is heard)
+                if self._human_agent_identity:
+                    self.session.set_participant(self._human_agent_identity)
 
-            # Introduce the human supervisor
-            # Note: Because the caller can_subscribe is False, they will NOT hear this.
-            self.session.generate_reply(
-                instructions="The human agent has just joined the call. Please give a brief introduction of the conversation so far, and ask if they want to connect to the caller.",
-            )
+                # Stop hold music so it doesn't bleed into the consultation
+                if self._background_audio:
+                    await self._background_audio.aclose()
+
+                # 4. Summarize to Human Supervisor
+                # We use the task's instructions which contain the conversation history summary
+                await self.session.generate_reply(instructions=self.instructions)
+            else:
+                raise RuntimeError("Dialing failed or timed out")
 
         except Exception:
-            logger.exception("Could not dial human agent")
+            logger.exception("Could not transfer to human agent")
             self._set_result(ToolError("Transfer failed: could not reach supervisor."))
         finally:
             if not dial_human_agent_task.done():
@@ -206,43 +221,18 @@ class WarmTransferTask(AgentTask[WarmTransferResult]):
             
     @function_tool(flags=ToolFlag.IGNORE_ON_ENTER)
     async def connect_to_caller(self, reason: str = "") -> None:
-        """Called when the human agent wants to connect to the caller."""
-        logger.debug("connecting to caller")
-        assert self._caller_room is not None
-
-        # Restore caller permissions so they can hear and be heard again
-        job_ctx = get_job_context()
-        caller_identity = None
-        for participant in self._caller_room.remote_participants.values():
-            if participant.kind in (
-                rtc.ParticipantKind.PARTICIPANT_KIND_SIP,
-                rtc.ParticipantKind.PARTICIPANT_KIND_STANDARD,
-            ) and participant.identity != self._human_agent_identity:
-                caller_identity = participant.identity
-                break
-                
-        if caller_identity:
-            try:
-                from livekit.protocol import models, room as room_proto
-                await job_ctx.api.room.update_participant(
-                    room_proto.UpdateParticipantRequest(
-                        room=self._caller_room.name,
-                        identity=caller_identity,
-                        permission=models.ParticipantPermission(
-                            can_subscribe=True, 
-                            can_publish=True,
-                        )
-                    )
-                )
-                logger.debug(f"Restored permissions for caller {caller_identity}")
-            except Exception as e:
-                logger.error(f"Failed to restore permissions for caller: {e}")
-
-        await self._merge_calls()
-        self._set_result(WarmTransferResult(human_agent_identity=self._human_agent_identity))
-
-        # when the caller or human agent leaves the room, we'll delete the room
-        self._caller_room.on("participant_disconnected", self._on_caller_participant_disconnected)
+        """Merges the call by connecting the caller to the human supervisor."""
+        logger.info("Merging call: Connecting caller to human agent.")
+        
+        # We don't need to restore permissions here if we didn't use update_participant.
+        # Track subscriptions will be cleaned up when AI leaves.
+        # But for completeness, we can focus back on caller or just let it be.
+        
+        await self.session.generate_reply(
+            instructions="Tell the human agent and the caller that you are connecting them now and then leave."
+        )
+        await self.session.wait_for_playout()
+        self.complete(WarmTransferResult(human_agent_identity=self._human_agent_identity))
 
     @function_tool(flags=ToolFlag.IGNORE_ON_ENTER)
     async def decline_transfer(self, reason: str) -> None:
