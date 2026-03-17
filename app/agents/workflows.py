@@ -162,20 +162,20 @@ class WarmTransferTask(AgentTask[WarmTransferResult]):
                         room=self._caller_room.name,
                         identity=caller_identity,
                         permission=models.ParticipantPermission(
-                            can_subscribe=False, 
-                            can_publish=False,
+                            can_subscribe=True, # MUST be True for DTMF/Hold Music!
+                            can_publish=False,  # Still quiet
                         )
                     )
                 )
-                logger.debug(f"Isolated caller {caller_identity}")
+                logger.debug(f"Limited caller {caller_identity} to listening only")
             except Exception as e:
-                logger.error(f"Failed to isolate caller: {e}")
+                logger.error(f"Failed to limit caller: {e}")
         else:
-            logger.warning("Could not find caller identity to isolate.")
+            logger.warning("Could not find caller identity to limit.")
 
         try:
             # 3. Start the transfer process (Dial human supervisor into this room)
-            # The AI is still responding, so after dialing, it should naturally summarize to the human agent.
+            # wait_until_answered is True, so this task completes when supervisor answers.
             dial_human_agent_task = asyncio.create_task(self._dial_human_agent())
             
             done, _ = await asyncio.wait(
@@ -186,13 +186,48 @@ class WarmTransferTask(AgentTask[WarmTransferResult]):
             if dial_human_agent_task not in done:
                 raise RuntimeError("Dialing failed or timed out")
             
-            # Stop the hold music as soon as human answers
-            if self._hold_audio_handle:
-                self._hold_audio_handle.stop()
-                self._hold_audio_handle = None
+            # Identify the supervisor participant who just joined
+            supervisor_identity = self._human_agent_identity
+            
+            # Isolate caller from Supervisor and AI Voice (so they only hear hold music)
+            if caller_identity:
+                try:
+                    from livekit.protocol import room as room_proto
+                    
+                    # Find tracks to unsubscribe caller from
+                    unsubscribe_sids = []
+                    
+                    # 1. AI Voice track
+                    for track_pub in self._caller_room.local_participant.tracks.values():
+                        if track_pub.source == rtc.TrackSource.SOURCE_MICROPHONE:
+                            unsubscribe_sids.append(track_pub.sid)
+                            
+                    # 2. Supervisor voice track (if they have joined and published)
+                    supervisor = self._caller_room.remote_participants.get(supervisor_identity)
+                    if supervisor:
+                        for track_pub in supervisor.tracks.values():
+                            if track_pub.kind == rtc.TrackKind.KIND_AUDIO:
+                                unsubscribe_sids.append(track_pub.sid)
 
+                    if unsubscribe_sids:
+                        await job_ctx.api.room.update_subscriptions(
+                            room_proto.UpdateSubscriptionsRequest(
+                                room=self._caller_room.name,
+                                identity=caller_identity,
+                                track_sids=unsubscribe_sids,
+                                subscribe=False
+                            )
+                        )
+                        logger.debug(f"Unsubscribed caller {caller_identity} from tracks: {unsubscribe_sids}")
+                except Exception as e:
+                    logger.error(f"Failed to subscription-isolate caller: {e}")
+
+            # Stop the hold music as soon as human answers? 
+            # Actually, user wants caller to hear music/dtmf WHILE the agent summarizes.
+            # So we keep hold music playing.
+            
             # Introduce the human supervisor
-            # Note: Because the caller can_subscribe is False, they will NOT hear this.
+            # Note: Because we unsubscribed the caller from AI voice, they will NOT hear this.
             self.session.generate_reply(
                 instructions="The human agent has just joined the call. Please give a brief introduction of the conversation so far, and ask if they want to connect to the caller.",
             )
@@ -224,6 +259,7 @@ class WarmTransferTask(AgentTask[WarmTransferResult]):
         if caller_identity:
             try:
                 from livekit.protocol import models, room as room_proto
+                # 1. Restore permissions
                 await job_ctx.api.room.update_participant(
                     room_proto.UpdateParticipantRequest(
                         room=self._caller_room.name,
@@ -234,7 +270,16 @@ class WarmTransferTask(AgentTask[WarmTransferResult]):
                         )
                     )
                 )
-                logger.debug(f"Restored permissions for caller {caller_identity}")
+                
+                # 2. Resubscribe to ALL tracks (this cancels the specific unsubscribes)
+                await job_ctx.api.room.update_subscriptions(
+                    room_proto.UpdateSubscriptionsRequest(
+                        room=self._caller_room.name,
+                        identity=caller_identity,
+                        subscribe=True, # Re-subscribe to everything
+                    )
+                )
+                logger.debug(f"Restored full permissions and subscriptions for caller {caller_identity}")
             except Exception as e:
                 logger.error(f"Failed to restore permissions for caller: {e}")
 
