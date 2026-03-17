@@ -65,7 +65,10 @@ async def inbound_entrypoint(ctx: JobContext):
     remote_participant = await ctx.wait_for_participant()
     if remote_participant.attributes.get("sip.phoneNumber", None):
         ud.user_timezone, ud.user_current_time = await AgentFactory.get_time_from_phone(remote_participant.attributes["sip.phoneNumber"])
-    agent_config = await AgentFactory.load_agent_config(ud,agent_id)
+    user_data = await AgentFactory.get_user_data(agent_id)
+    agent_config = await AgentFactory.load_agent_config(user_data,agent_id)
+    user_data.outbound_trunk_id = agent_config.outbound_trunk_id
+    user_data.human_escalation_phone = agent_config.human_phone_number
     agent_config.call_type = metadata["call_type"]
     agent_config.ctx = ctx
 
@@ -104,7 +107,7 @@ async def inbound_entrypoint(ctx: JobContext):
 
     session = AgentSession(
         preemptive_generation=True, 
-        userdata=ud,
+        userdata=user_data,
         user_away_timeout=10)
     
     agent = AgentFactory.from_config(agent_config)
@@ -188,12 +191,12 @@ async def inbound_entrypoint(ctx: JobContext):
         for _ in range(10): # Try for 30 seconds
             req = api.ListEgressRequest(egress_id=egress_info.egress_id)
             status_info = await ctx.api.egress.list_egress(req)
-            current = status_info[0]
-            
+            current = status_info.items[0]           
             if current.status == api.EgressStatus.EGRESS_COMPLETE:
                 return
             await asyncio.sleep(3)
-
+    if agent_config.max_duration and agent_config.max_duration>0:
+        asyncio.create_task(session_timeout_monitor(ctx, agent_config.max_duration))
 async def post_call_analysis(session: AgentSession):
     headers = {
         "Content-Type": "application/json",
@@ -212,3 +215,11 @@ async def post_call_analysis(session: AgentSession):
     logger.info(f"Post-call analysis: {analysis}")
     await call_models.save_analysis(session.userdata.call_id, analysis)
 
+
+async def session_timeout_monitor(ctx: JobContext, timeout: int):
+    await asyncio.sleep(timeout)
+    print(f"Hard timeout reached ({timeout}s). Shutting down.")
+    
+    # You can play a "Goodbye" TTS here if you have a reference to the session
+    # then kill the job.
+    ctx.shutdown()

@@ -27,7 +27,8 @@ class UserData:
     user_timezone: str = ""
     user_current_time: str = ""
     call_id: str = None
-
+    outbound_trunk_id: str = "" #TODO WRAP IN OBJECT
+    human_escalation_phone: str = "" #TODO WRAP IN OBJECT
 class CallDetails(BaseModel):
     livekit_call_id: str
     call_to: str
@@ -58,6 +59,9 @@ class TTSConfig(ModelBase):
     speed: str|float
     volume: str|float
     emotion: str
+
+class SIPConfig(BaseModel):
+    outbound_trunk_id: str
 
 class AgentConfig(BaseModel):
     user_id: str
@@ -92,3 +96,6 @@ class AgentConfig(BaseModel):
     model_config = ConfigDict(
         arbitrary_types_allowed=True
     )
+    max_duration: Optional[int] = None #TODO WRAP IN OBJECT
+    outbound_trunk_id: str
+    human_phone_number: Optional[str] = None

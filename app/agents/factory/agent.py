@@ -10,7 +10,7 @@ from livekit.plugins import deepgram, cartesia, groq, openai, elevenlabs, assemb
 from livekit.plugins.turn_detector.english import EnglishModel
 from livekit.plugins.turn_detector.multilingual import MultilingualModel
 
-from app.agents import AgentConfig, CallDetails
+from app.agents import AgentConfig, UserData
 from app.agents.prompt import inbound as inbound_prompt
 from app.agents.tools import resolve_tools
 from app.models import call_models
@@ -161,6 +161,10 @@ class InboundAgent(Agent):
         """Switch to speaking Hindi"""
         await self._switch_language("hi")  
 class AgentFactory:
+    @staticmethod
+    async def get_user_data(agent_id: str, user_phone_number: str = "") -> UserData:
+        return await helper.get_user_data(agent_id, user_phone_number)    
+
     @staticmethod
     async def load_agent_config(user_data, agent_id: str) -> AgentConfig:
         return await helper.load_agent_runtime_config(agent_id, user_data)    

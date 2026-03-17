@@ -210,3 +210,25 @@ class VoiceAgentAdvancedSettings(Document):
     smartAnalysis = BooleanField()
     enableBursting = DictField()
     callBack = DictField()
+
+class VoiceBotSettings(Document):
+    meta = {
+        "collection": "voicebotsettings",
+        "indexes": [
+            {
+                "fields": ["userId"],
+                "unique": True
+            }
+        ],
+        "strict": False
+    }
+
+    userId = ObjectIdField(required=True)
+    agentId = ObjectIdField(required=True)
+
+    phone_number = StringField()
+    startTime = StringField()
+    endTime = StringField()
+    timezone = StringField()
+
+    handleIncomingCall = BooleanField()

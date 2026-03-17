@@ -136,39 +136,107 @@ class WarmTransferTask(AgentTask[WarmTransferResult]):
     async def on_enter(self) -> None:
         job_ctx = get_job_context()
         self._caller_room = job_ctx.room
-
-        # start the background audio
+        
+        # 1. Start Hold Music for the Caller
         if self._hold_audio is not None:
             await self._background_audio.start(room=self._caller_room)
             self._hold_audio_handle = self._background_audio.play(self._hold_audio, loop=True)
 
-        self._set_io_enabled(False)
+        # 2. Isolate the caller from hearing the human agent or being heard
+        # Find the caller's identity. The caller is typically a SIP or STANDARD participant in the room.
+        # There should only be one remote participant if this is a 1:1 call.
+        caller_identity = None
+        for participant in self._caller_room.remote_participants.values():
+            if participant.kind in (
+                rtc.ParticipantKind.PARTICIPANT_KIND_SIP,
+                rtc.ParticipantKind.PARTICIPANT_KIND_STANDARD,
+            ):
+                caller_identity = participant.identity
+                break
+        
+        if caller_identity:
+            try:
+                from livekit.protocol import models, room as room_proto
+                await job_ctx.api.room.update_participant(
+                    room_proto.UpdateParticipantRequest(
+                        room=self._caller_room.name,
+                        identity=caller_identity,
+                        permission=models.ParticipantPermission(
+                            can_subscribe=False, 
+                            can_publish=False,
+                        )
+                    )
+                )
+                logger.debug(f"Isolated caller {caller_identity}")
+            except Exception as e:
+                logger.error(f"Failed to isolate caller: {e}")
+        else:
+            logger.warning("Could not find caller identity to isolate.")
 
         try:
+            # 3. Start the transfer process (Dial human supervisor into this room)
+            # The AI is still responding, so after dialing, it should naturally summarize to the human agent.
             dial_human_agent_task = asyncio.create_task(self._dial_human_agent())
+            
             done, _ = await asyncio.wait(
                 (dial_human_agent_task, self._human_agent_failed_fut),
                 return_when=asyncio.FIRST_COMPLETED,
             )
+            
             if dial_human_agent_task not in done:
-                raise RuntimeError()
+                raise RuntimeError("Dialing failed or timed out")
+            
+            # Stop the hold music as soon as human answers
+            if self._hold_audio_handle:
+                self._hold_audio_handle.stop()
+                self._hold_audio_handle = None
 
-            self._human_agent_sess = dial_human_agent_task.result()
-            # let the human speak first
+            # Introduce the human supervisor
+            # Note: Because the caller can_subscribe is False, they will NOT hear this.
+            self.session.generate_reply(
+                instructions="The human agent has just joined the call. Please give a brief introduction of the conversation so far, and ask if they want to connect to the caller.",
+            )
 
         except Exception:
-            logger.exception("could not dial human agent")
-            self._set_result(ToolError("could not dial human agent"))
-            return
-
+            logger.exception("Could not dial human agent")
+            self._set_result(ToolError("Transfer failed: could not reach supervisor."))
         finally:
-            await utils.aio.cancel_and_wait(dial_human_agent_task)
-
+            if not dial_human_agent_task.done():
+                await utils.aio.cancel_and_wait(dial_human_agent_task)
+            
     @function_tool(flags=ToolFlag.IGNORE_ON_ENTER)
     async def connect_to_caller(self, reason: str = "") -> None:
         """Called when the human agent wants to connect to the caller."""
         logger.debug("connecting to caller")
         assert self._caller_room is not None
+
+        # Restore caller permissions so they can hear and be heard again
+        job_ctx = get_job_context()
+        caller_identity = None
+        for participant in self._caller_room.remote_participants.values():
+            if participant.kind in (
+                rtc.ParticipantKind.PARTICIPANT_KIND_SIP,
+                rtc.ParticipantKind.PARTICIPANT_KIND_STANDARD,
+            ) and participant.identity != self._human_agent_identity:
+                caller_identity = participant.identity
+                break
+                
+        if caller_identity:
+            try:
+                from livekit.protocol import models, room as room_proto
+                await job_ctx.api.room.update_participant(
+                    room_proto.UpdateParticipantRequest(
+                        room=self._caller_room.name,
+                        identity=caller_identity,
+                        permission=models.ParticipantPermission(
+                            can_subscribe=True, 
+                            can_publish=True,
+                        )
+                    )
+                )
+                logger.debug(f"Restored permissions for caller {caller_identity}")
+            except Exception as e:
+                logger.error(f"Failed to restore permissions for caller: {e}")
 
         await self._merge_calls()
         self._set_result(WarmTransferResult(human_agent_identity=self._human_agent_identity))
@@ -218,10 +286,8 @@ class WarmTransferTask(AgentTask[WarmTransferResult]):
         if self.done():
             return
 
-        if self._human_agent_sess:
-            self._human_agent_sess.shutdown()
-            self._human_agent_sess = None
-
+        # Do NOT shutdown human_agent_sess here if you want a smooth handoff.
+        # Just stop the audio.
         if self._hold_audio_handle:
             self._hold_audio_handle.stop()
             self._hold_audio_handle = None
@@ -229,99 +295,42 @@ class WarmTransferTask(AgentTask[WarmTransferResult]):
         self._set_io_enabled(True)
         self.complete(result)
 
-    async def _dial_human_agent(self) -> AgentSession:
+    async def _dial_human_agent(self) -> None:
         assert self._caller_room is not None
 
         job_ctx = get_job_context()
-        ws_url = job_ctx._info.url
-
-        # create a new room for the human agent
-        human_agent_room_name = self._caller_room.name + "-human-agent"
-        room = rtc.Room()
-        token = (
-            api.AccessToken()
-            .with_identity(self._caller_room.local_participant.identity)
-            .with_grants(
-                api.VideoGrants(
-                    room_join=True,
-                    room=human_agent_room_name,
-                    can_update_own_metadata=True,
-                    can_publish=True,
-                    can_subscribe=True,
-                )
-            )
-            .with_kind("agent")
-        ).to_jwt()
 
         logger.debug(
-            "connecting to human agent room",
-            extra={"ws_url": ws_url, "human_agent_room_name": human_agent_room_name},
-        )
-        await room.connect(ws_url, token)
-
-        # if human agent hung up for whatever reason, we'd resume the caller conversation
-        room.on("disconnected", self._on_human_agent_room_close)
-
-        human_agent_sess: AgentSession = AgentSession(
-            vad=self.session.vad or NOT_GIVEN,
-            llm=self.session.llm or NOT_GIVEN,
-            stt=self.session.stt or NOT_GIVEN,
-            tts=self.session.tts or NOT_GIVEN,
-            turn_detection=self.session.turn_detection or NOT_GIVEN,
-        )
-        # create a copy of this AgentTask
-        human_agent_agent = Agent(
-            instructions=self.instructions,
-            turn_detection=self.turn_detection,
-            stt=self.stt,
-            vad=self.vad,
-            llm=self.llm,
-            tts=self.tts,
-            tools=self.tools,
-            chat_ctx=self.chat_ctx,
-            allow_interruptions=self.allow_interruptions,
-        )
-        await human_agent_sess.start(
-            agent=human_agent_agent,
-            room=room,
-            room_options=room_io.RoomOptions(
-                close_on_disconnect=True,
-                delete_room_on_close=True,
-                participant_identity=self._human_agent_identity,
-            ),
-            record=False,  # TODO: support recording on multiple sessions?
+            "dialing human agent into caller room",
+            extra={"human_agent_identity": self._human_agent_identity},
         )
 
-        # dial the human agent
+        # dial the human agent directly into the caller's room
         await job_ctx.api.sip.create_sip_participant(
             api.CreateSIPParticipantRequest(
                 sip_trunk_id=self._sip_trunk_id,
                 sip_call_to=self._target_phone_number,
-                room_name=human_agent_room_name,
+                room_name=self._caller_room.name,
                 participant_identity=self._human_agent_identity,
                 wait_until_answered=True,
             )
         )
 
-        return human_agent_sess
-
     async def _merge_calls(self) -> None:
         assert self._caller_room is not None
-        assert self._human_agent_sess is not None
+        # We don't need to assert human_agent_sess here if we are just opening audio
+        
+        logger.info("Merging calls: stopping hold music")
 
-        job_ctx = get_job_context()
-        human_agent_room = self._human_agent_sess.room_io.room
-        # we no longer care about the human agent session. it's supposed to be over
-        human_agent_room.off("disconnected", self._on_human_agent_room_close)
+        if self._hold_audio_handle:
+            self._hold_audio_handle.stop()
+            self._hold_audio_handle = None
+        
+        # Open the IO for the original agent
+        self._set_io_enabled(True)
 
-        logger.debug(f"moving {self._human_agent_identity} to caller room {self._caller_room.name}")
-        await job_ctx.api.room.move_participant(
-            api.MoveParticipantRequest(
-                room=human_agent_room.name,
-                identity=self._human_agent_identity,
-                destination_room=self._caller_room.name,
-            )
-        )
+        # Instead of shutting down, we let the Task result handle the cleanup
+        logger.debug("Calls successfully merged.")
 
     def _set_io_enabled(self, enabled: bool) -> None:
         input = self.session.input

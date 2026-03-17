@@ -7,6 +7,14 @@ from app.agents import UserData
 
 logger = logging.getLogger(__name__)
 
+async def get_user_data(agent_id, phone_number): #TODO HAZARD
+    return UserData(
+        user_id="6992f9020296c31229cfacf0",
+        name="Gurtej Singh",
+        email="gurtej@gmail.com",
+        phone="+917460015555"
+    )
+
 async def load_agent_runtime_config(agent_id: str, user_data: UserData):
     workflow_doc = None
     agent: models.VoiceAgent = models.VoiceAgent.objects(
@@ -21,12 +29,18 @@ async def load_agent_runtime_config(agent_id: str, user_data: UserData):
         agentId=agent.id).first()
     identity_doc: models.VoiceAgentIdentity = models.VoiceAgentIdentity.objects(agentId=agent.id).first()
     advanced_doc: models.VoiceAgentAdvancedSettings = models.VoiceAgentAdvancedSettings.objects(agentId=agent.id).first()
-    voice_doc: models.VoiceAgentVoiceConfig = models.VoiceAgentVoiceConfig.objects(
-        agentId=agent.id).first()
+    escalation_doc: models.VoiceAgentEscalation = models.VoiceAgentEscalation.objects(agentId=agent.id).first()
+    # voice_doc: models.VoiceAgentVoiceConfig = models.VoiceAgentVoiceConfig.objects(
+    #     agentId=agent.id).first()
 
     if config_doc.isWorkflowEnabled:
         workflow_doc: models.VoiceAgentWorkflow = models.VoiceAgentWorkflow.objects(agentId=agent.id).first()
     
+    human_phone_number = None
+    if escalation_doc.humanEscalationEnabled is True and escalation_doc.teamMembers:
+        team_member_id = escalation_doc.teamMembers[0]["_id"]
+        voicebot_settings_doc: models.VoiceBotSettings = models.VoiceBotSettings.objects(userId=ObjectId(team_member_id)).first()
+        human_phone_number = voicebot_settings_doc.phone_number
     # ---------- SYSTEM PROMPT ----------
     system_prompt = (
         config_doc.systemPrompt
@@ -109,8 +123,10 @@ async def load_agent_runtime_config(agent_id: str, user_data: UserData):
         ),
         tools=tools,
         greeting=greeting,
-        allow_recording=advanced_doc.privacy["audioRecording"],
-        # allow_interruptions=
+        allow_recording=advanced_doc.privacy.get("audioRecording", True),
+        max_duration=advanced_doc.inboundTimeout.get("maxDuration", -1) if advanced_doc else None,
+        human_phone_number=human_phone_number,
+        outbound_trunk_id=agent.outboundTrunkId
     )
 
 

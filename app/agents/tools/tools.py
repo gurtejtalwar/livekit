@@ -396,7 +396,7 @@ async def do_not_call(agent_id: str,
         json=payload
     )
 @llm.function_tool
-async def transfer_to_human(dummy: str, ctx: RunContext) -> None:
+async def transfer_to_human(outbound_trunk: str, ctx: RunContext) -> None:
     """Called when the user asks to speak to a human agent. This will put the user on
         hold while the supervisor is connected.
 
@@ -407,6 +407,10 @@ async def transfer_to_human(dummy: str, ctx: RunContext) -> None:
     - User: Can I speak to your supervisor?
     - Assistant: Yes of course.
     ----
+
+    Args:
+        outbound_trunk: The unique outbound SIP trunk ID
+                        associated with the account.
     """
     logger.info("tool called to transfer to human")
     await ctx.session.say(
@@ -417,8 +421,8 @@ async def transfer_to_human(dummy: str, ctx: RunContext) -> None:
         assert SUPERVISOR_PHONE_NUMBER is not None
 
         result = await WarmTransferTask(
-            target_phone_number=SUPERVISOR_PHONE_NUMBER,
-            sip_trunk_id=SIP_TRUNK_ID,
+            target_phone_number=ctx.session.userdata.human_escalation_phone,
+            sip_trunk_id=ctx.session.userdata.outbound_trunk_id,
             # sip_number=SIP_NUMBER,
             chat_ctx=ctx.session._chat_ctx,
             # add extra instructions for summarization
@@ -443,4 +447,8 @@ async def transfer_to_human(dummy: str, ctx: RunContext) -> None:
         "you are on the line with my supervisor. I'll be hanging up now.",
         allow_interruptions=False,
     )
+    
+    # Wait for the agent to finish speaking the intro
+    # await ctx.wait_for_playout()
+
     # ctx.session.shutdown()
