@@ -308,15 +308,46 @@ class WarmTransferTask(AgentTask[WarmTransferResult]):
                     )
                 )
                 
-                # 2. Resubscribe to ALL tracks (this cancels the specific unsubscribes)
+                # 2. Gather ALL audio track SIDs to ensure explicit resubscription
+                all_audio_sids = []
+                supervisor = self._caller_room.remote_participants.get(self._human_agent_identity)
+                caller = self._caller_room.remote_participants.get(caller_identity)
+                
+                # Check Local Participant (AI Voice + Background/Hold Music)
+                for tp in self._caller_room.local_participant.track_publications.values():
+                    if tp.kind == rtc.TrackKind.KIND_AUDIO:
+                        all_audio_sids.append(tp.sid)
+                
+                if supervisor:
+                    for tp in supervisor.track_publications.values():
+                        if tp.kind == rtc.TrackKind.KIND_AUDIO:
+                            all_audio_sids.append(tp.sid)
+                
+                if caller:
+                    for tp in caller.track_publications.values():
+                        if tp.kind == rtc.TrackKind.KIND_AUDIO:
+                            all_audio_sids.append(tp.sid)
+
+                # 3. Explicitly resubscribe CALLER to all audio
                 await job_ctx.api.room.update_subscriptions(
                     room_proto.UpdateSubscriptionsRequest(
                         room=self._caller_room.name,
                         identity=caller_identity,
-                        subscribe=True, # Re-subscribe to everything
+                        track_sids=all_audio_sids,
+                        subscribe=True, 
                     )
                 )
-                logger.debug(f"Restored full permissions and subscriptions for caller {caller_identity}")
+
+                # 4. Explicitly resubscribe SUPERVISOR to all audio
+                await job_ctx.api.room.update_subscriptions(
+                    room_proto.UpdateSubscriptionsRequest(
+                        room=self._caller_room.name,
+                        identity=self._human_agent_identity,
+                        track_sids=all_audio_sids,
+                        subscribe=True, 
+                    )
+                )
+                logger.debug(f"Restored full permissions and explicit subscriptions for both humans.")
             except Exception as e:
                 logger.error(f"Failed to restore permissions for caller: {e}")
 
