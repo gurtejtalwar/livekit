@@ -189,38 +189,61 @@ class WarmTransferTask(AgentTask[WarmTransferResult]):
             # Identify the supervisor participant who just joined
             supervisor_identity = self._human_agent_identity
             
-            # Isolate caller from Supervisor and AI Voice (so they only hear hold music)
+            # Isolate caller and supervisor
             if caller_identity:
                 try:
                     from livekit.protocol import room as room_proto
                     
-                    # Find tracks to unsubscribe caller from
-                    unsubscribe_sids = []
+                    # 1. Isolate CALLER from AI and Supervisor
+                    # Caller should only hear hold music
+                    caller_unsubs = []
                     
-                    # 1. AI Voice track
-                    for track_pub in self._caller_room.local_participant.tracks.values():
+                    # AI's tracks (unsubs from Microphone, but NOT background audio if possible)
+                    for track_pub in self._caller_room.local_participant.published_tracks.values():
+                        # We want to keep hold music (usually name contains 'background' or different source)
+                        # AI Voice is usually the primary microphone track.
                         if track_pub.source == rtc.TrackSource.SOURCE_MICROPHONE:
-                            unsubscribe_sids.append(track_pub.sid)
+                            caller_unsubs.append(track_pub.sid)
                             
-                    # 2. Supervisor voice track (if they have joined and published)
+                    # Supervisor voice track
                     supervisor = self._caller_room.remote_participants.get(supervisor_identity)
                     if supervisor:
                         for track_pub in supervisor.tracks.values():
                             if track_pub.kind == rtc.TrackKind.KIND_AUDIO:
-                                unsubscribe_sids.append(track_pub.sid)
+                                caller_unsubs.append(track_pub.sid)
 
-                    if unsubscribe_sids:
+                    if caller_unsubs:
                         await job_ctx.api.room.update_subscriptions(
                             room_proto.UpdateSubscriptionsRequest(
                                 room=self._caller_room.name,
                                 identity=caller_identity,
-                                track_sids=unsubscribe_sids,
+                                track_sids=caller_unsubs,
                                 subscribe=False
                             )
                         )
-                        logger.debug(f"Unsubscribed caller {caller_identity} from tracks: {unsubscribe_sids}")
+                    
+                    # 2. Isolate SUPERVISOR from Hold Music
+                    # Supervisor should hear AI and Caller (wait, supervisor only needs AI for now)
+                    # Supervisor should NOT hear Hold Music (Background Audio)
+                    supervisor_unsubs = []
+                    for track_pub in self._caller_room.local_participant.published_tracks.values():
+                        # If it's NOT the primary microphone track, it's likely hold music
+                        if track_pub.source != rtc.TrackSource.SOURCE_MICROPHONE:
+                            supervisor_unsubs.append(track_pub.sid)
+                            
+                    if supervisor_unsubs:
+                        await job_ctx.api.room.update_subscriptions(
+                            room_proto.UpdateSubscriptionsRequest(
+                                room=self._caller_room.name,
+                                identity=supervisor_identity,
+                                track_sids=supervisor_unsubs,
+                                subscribe=False
+                            )
+                        )
+                        
+                    logger.debug(f"Isolation complete: Caller unsubs={caller_unsubs}, Supervisor unsubs={supervisor_unsubs}")
                 except Exception as e:
-                    logger.error(f"Failed to subscription-isolate caller: {e}")
+                    logger.error(f"Failed to perform cross-isolation: {e}")
 
             # Stop the hold music as soon as human answers? 
             # Actually, user wants caller to hear music/dtmf WHILE the agent summarizes.
