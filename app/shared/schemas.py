@@ -9,5 +9,6 @@ class PostCallAnalysis(BaseModel):
     summary: str
     follow_up_trigger: bool
     lead_type: str
+    title: str
 
     model_config = ConfigDict(for_orm=True)
