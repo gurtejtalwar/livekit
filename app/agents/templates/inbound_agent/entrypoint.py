@@ -4,6 +4,7 @@ import json
 
 from dataclasses import dataclass
 
+from livekit import api
 from livekit.plugins import noise_cancellation
 from livekit.agents import (metrics,
                             function_tool,
@@ -50,6 +51,34 @@ class BGTasks:
 @inbound_server.rtc_session(agent_name="inbound-agent")
 async def inbound_entrypoint(ctx: JobContext):
     await ctx.connect(auto_subscribe=AutoSubscribe.AUDIO_ONLY)
+
+    try:
+        # Use explicit file_type to ensure the protobuf is well-formed for the server
+        file_output = api.EncodedFileOutput(
+            file_type=api.EncodedFileType.MP3,
+            filepath=f"recordings/inbound_{ctx.room.name}.mp3",
+            s3=api.S3Upload(
+                access_key=settings.AWS_ACCESS_KEY,
+                secret=settings.AWS_SECRET_KEY,
+                bucket=settings.AWS_BUCKET_NAME_RECORDING,
+                endpoint=settings.AWS_BUCKET_ENDPOINT_RECORDING,
+                region=settings.AWS_REGION
+            )
+        )
+
+        # 2. Pass that list to the RoomCompositeEgressRequest
+        await ctx.api.egress.start_room_composite_egress(
+            api.RoomCompositeEgressRequest(
+                room_name=ctx.room.name,
+                audio_only=True,
+                file_outputs=[file_output] # This must be a list
+            )
+        )
+        logger.info(f"Started egress for room {ctx.room.name}")
+    except Exception as e:
+        logger.exception("Failed to start egress: %s", e)
+
+
 
     # Example: resolve from headers / room metadata / API
     metadata = json.loads(ctx.job.metadata)
