@@ -296,7 +296,7 @@ class WarmTransferTask(AgentTask[WarmTransferResult]):
                 if hasattr(self.session, "_room_io") and self.session._room_io:
                     self.session._room_io.set_participant(caller_identity)
 
-                # 1. Restore permissions
+                # 1. Restore permissions for CALLER
                 await job_ctx.api.room.update_participant(
                     room_proto.UpdateParticipantRequest(
                         room=self._caller_room.name,
@@ -307,13 +307,25 @@ class WarmTransferTask(AgentTask[WarmTransferResult]):
                         )
                     )
                 )
+
+                # 2. Restore permissions for SUPERVISOR
+                await job_ctx.api.room.update_participant(
+                    room_proto.UpdateParticipantRequest(
+                        room=self._caller_room.name,
+                        identity=self._human_agent_identity,
+                        permission=models.ParticipantPermission(
+                            can_subscribe=True, 
+                            can_publish=True,
+                        )
+                    )
+                )
                 
-                # 2. Gather ALL audio track SIDs to ensure explicit resubscription
+                # 3. Gather ALL audio track SIDs to ensure explicit resubscription
                 all_audio_sids = []
                 supervisor = self._caller_room.remote_participants.get(self._human_agent_identity)
                 caller = self._caller_room.remote_participants.get(caller_identity)
                 
-                # Check Local Participant (AI Voice + Background/Hold Music)
+                # AI's audio tracks
                 for tp in self._caller_room.local_participant.track_publications.values():
                     if tp.kind == rtc.TrackKind.KIND_AUDIO:
                         all_audio_sids.append(tp.sid)
@@ -328,7 +340,8 @@ class WarmTransferTask(AgentTask[WarmTransferResult]):
                         if tp.kind == rtc.TrackKind.KIND_AUDIO:
                             all_audio_sids.append(tp.sid)
 
-                # 3. Explicitly resubscribe CALLER to all audio
+                # 4. Explicitly resubscribe BOTH humans to ALL audio tracks
+                # This ensures the override from the briefing phase is cleared.
                 await job_ctx.api.room.update_subscriptions(
                     room_proto.UpdateSubscriptionsRequest(
                         room=self._caller_room.name,
@@ -338,7 +351,6 @@ class WarmTransferTask(AgentTask[WarmTransferResult]):
                     )
                 )
 
-                # 4. Explicitly resubscribe SUPERVISOR to all audio
                 await job_ctx.api.room.update_subscriptions(
                     room_proto.UpdateSubscriptionsRequest(
                         room=self._caller_room.name,
@@ -347,7 +359,7 @@ class WarmTransferTask(AgentTask[WarmTransferResult]):
                         subscribe=True, 
                     )
                 )
-                logger.debug(f"Restored full permissions and explicit subscriptions for both humans.")
+                logger.debug(f"Handoff bridge complete: Caller {caller_identity} <-> Supervisor {self._human_agent_identity}")
             except Exception as e:
                 logger.error(f"Failed to restore permissions for caller: {e}")
 
