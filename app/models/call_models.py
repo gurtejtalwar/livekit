@@ -129,6 +129,8 @@ class TranscriptMessage(EmbeddedDocument):
     llm_usage = DictField()
 
     source_medium = StringField()
+    performance = DictField()
+    created_at = IntField()
 
 class ConversationMetadata(EmbeddedDocument):
     start_time_unix_secs = IntField()
@@ -367,23 +369,38 @@ def build_structured_transcript(history_items: list) -> list[dict]:
             continue
 
         # ------------------------
-        # Capture ChatMessage
+        # Capture ChatMessage with Metrics
         # ------------------------
         if isinstance(item, llm.ChatMessage):
             role = "agent" if item.role == "assistant" else "user"
-
+            
             # Normalize content
             if isinstance(item.content, list):
                 message = " ".join(p.strip() for p in item.content if p)
             else:
                 message = str(item.content).strip()
 
+            # Extract metrics directly from the object
+            # MetricsReport is a TypedDict, so we use .get()
+            m = item.metrics if item.metrics else {}
+            
+            # Create a dedicated performance object
+            performance_data = {}
+            for key, value in m.items():
+                # Store all available metrics (latencies, timestamps, etc.)
+                # Formatted to 3 decimal places for readability if it's a float
+                # if isinstance(value, float):
+                #     performance_data[key] = f"{value:.3f}s"
+                # else:
+                performance_data[key] = value
+
             transcript.append({
                 "role": role,
                 "message": message,
+                "created_at": item.created_at,
+                "performance": performance_data,
                 "tool_calls": []
             })
-
     # ------------------------
     # Attach function calls to last agent message
     # (Most frameworks call functions immediately after assistant turn)
