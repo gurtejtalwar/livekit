@@ -163,7 +163,7 @@ class WarmTransferTask(AgentTask[WarmTransferResult]):
                         identity=caller_identity,
                         permission=models.ParticipantPermission(
                             can_subscribe=True, # MUST be True for DTMF/Hold Music!
-                            can_publish=False,  # Still quiet
+                            can_publish=True,   # Keep active, isolate via subscriptions
                         )
                     )
                 )
@@ -231,14 +231,23 @@ class WarmTransferTask(AgentTask[WarmTransferResult]):
                             )
                         )
                     
-                    # 2. Isolate SUPERVISOR from Hold Music
-                    # Supervisor should hear AI and Caller
+                    # 2. Isolate SUPERVISOR from Hold Music AND Caller
+                    # Supervisor should hear AI summary
                     # Supervisor should NOT hear Hold Music (Background Audio)
+                    # Supervisor should NOT hear Caller (Briefing is private)
                     supervisor_unsubs = []
+                    
+                    # AI's Background Audio (Hold Music)
                     for track_pub in self._caller_room.local_participant.track_publications.values():
-                        # If it's NOT the primary microphone track, it's hold music
                         if track_pub.source != rtc.TrackSource.SOURCE_MICROPHONE:
                             supervisor_unsubs.append(track_pub.sid)
+                            
+                    # Caller's audio tracks
+                    caller = self._caller_room.remote_participants.get(caller_identity)
+                    if caller:
+                        for track_pub in caller.track_publications.values():
+                            if track_pub.kind == rtc.TrackKind.KIND_AUDIO:
+                                supervisor_unsubs.append(track_pub.sid)
                             
                     if supervisor_unsubs:
                         await job_ctx.api.room.update_subscriptions(
