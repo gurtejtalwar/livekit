@@ -180,6 +180,7 @@ class CustomField(BaseModel):
 #/ -- Book Appointment Tool --/
 @llm.function_tool
 async def book_appointment(
+    call_id: str,
     name: str,
     date: str,
     time: str,
@@ -195,6 +196,7 @@ async def book_appointment(
     "Content-Type": "application/json"
     }
     payload = {
+        "conversation_id": call_id,
         "caller_name": name,
         "date": date,
         "time": time,
