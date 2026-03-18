@@ -588,5 +588,6 @@ async def update_sip_context(config: AgentConfig):
             twilio_account_sid=twilio_account_sid,
             hostname=hostname,
         )
-        
+    
+    print(f"Agent Config: {config}")
     return config
