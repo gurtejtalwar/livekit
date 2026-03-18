@@ -555,6 +555,7 @@ async def update_sip_context(config: AgentConfig):
     # Usually, in a telephony call, there is only one remote participant
     caller = None
     for p in config.ctx.room.remote_participants.values():
+        print(f"Remote Participants: \n {p}")
         if p.identity.startswith("sip_"):
             caller = p
             break
