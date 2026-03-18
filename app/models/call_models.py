@@ -565,7 +565,7 @@ async def update_sip_context(config: AgentConfig):
     
     if caller:
         attrs = caller.attributes or {}
-
+        print(f"SIP Attributes are: \n{attrs}")
         livekit_call_id = attrs.get("sip.callID")
         trunk_id = attrs.get("sip.trunkID")
         dispatch_rule_id = attrs.get("sip.ruleID")
