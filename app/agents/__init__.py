@@ -3,19 +3,7 @@ from dataclasses import dataclass, field
 from enum import Enum
 from pydantic import BaseModel, ConfigDict
 
-from livekit.agents import JobContext
-
-class STTProvider(str, Enum):
-    DEEPGRAM = "deepgram"
-    ASSEMBLYAI = "assemblyai"
-
-class TTSProvider(str, Enum):
-    CARTESIA = "cartesia"
-    ELEVENLABS = "elevenlabs"
-
-class LLMProvider(str, Enum):
-    GROQ = "groq"
-    OPENAI = "openai"
+from livekit.agents import JobContext, stt, llm, tts
 
 @dataclass
 class UserData:
@@ -29,6 +17,7 @@ class UserData:
     call_id: str = None
     outbound_trunk_id: str = "" #TODO WRAP IN OBJECT
     human_escalation_phone: str = "" #TODO WRAP IN OBJECT
+
 class CallDetails(BaseModel):
     livekit_call_id: str
     call_to: str
@@ -63,7 +52,23 @@ class TTSConfig(ModelBase):
 class SIPConfig(BaseModel):
     outbound_trunk_id: str
 
+class LivekitPlugins(BaseModel):
+    lk_stt: stt.STT = None
+    lk_llm: llm.LLM = None
+    lk_tts: tts.TTS = None
+
+    model_config = ConfigDict(
+        arbitrary_types_allowed=True
+    )
+class ModelConfig(BaseModel):
+    stt: STTConfig
+    llm: LLMConfig
+    tts: TTSConfig
+
 class AgentConfig(BaseModel):
+    models: ModelConfig
+    lk_plugins: LivekitPlugins = LivekitPlugins()
+    
     user_id: str
     agent_id: str
     agent_name: str
@@ -75,9 +80,6 @@ class AgentConfig(BaseModel):
 
     system_prompt: str
 
-    stt: STTConfig
-    llm: LLMConfig
-    tts: TTSConfig
 
     language: Optional[str] = "English"
     additional_languages: List[str] = field(default_factory=list)

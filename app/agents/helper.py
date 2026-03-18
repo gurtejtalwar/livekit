@@ -104,22 +104,24 @@ async def load_agent_runtime_config(agent_id: str, user_data: UserData):
         knowledge_base_id=identity_doc.resourceCentreId,
         system_prompt=lk_prompt,
         workflow_graph_json=workflow_doc.workflow_config if workflow_doc else None,
-        stt=agents.STTConfig(
-            provider=stt_provider,
-            model=stt_model,
-        ),
-        llm=agents.LLMConfig(
-            model=llm_model,
-            provider=llm_provider,
-            max_tokens=llm_max_tokens
-        ),
-        tts=agents.TTSConfig(
-            model=tts_model,
-            provider=tts_provider,
-            voice_id=tts_voice_id,
-            speed=tts_speed,
-            volume=tts_volume,
-            emotion=tts_emotion
+        models=agents.ModelConfig(
+            stt=agents.STTConfig(
+                provider=stt_provider,
+                model=stt_model
+            ),
+            llm=agents.LLMConfig(
+                model=llm_model,
+                provider=llm_provider,
+                max_tokens=llm_max_tokens
+            ),
+            tts=agents.TTSConfig(
+                model=tts_model,
+                provider=tts_provider,
+                voice_id=tts_voice_id,
+                speed=tts_speed,
+                volume=tts_volume,
+                emotion=tts_emotion
+            ),
         ),
         tools=tools,
         greeting=greeting,

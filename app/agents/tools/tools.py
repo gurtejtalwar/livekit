@@ -7,9 +7,9 @@ import logging
 import gc
 
 import time
-from datetime import datetime
+from datetime import datetime, timezone
 from dotenv import load_dotenv
-from typing import Optional, List
+from typing import Optional, List, Literal
 from pydantic import BaseModel
 from optimum.onnxruntime import ORTModelForFeatureExtraction
 from transformers import AutoTokenizer
@@ -180,12 +180,12 @@ class CustomField(BaseModel):
 #/ -- Book Appointment Tool --/
 @llm.function_tool
 async def book_appointment(
-    call_id: str,
     name: str,
     date: str,
     time: str,
     agentId: str,
-    customFields: Optional[List[CustomField]] = None
+    ctx: RunContext,
+    customFields: Optional[List[CustomField]] = None,
 ):
     """
     Called only when the user confirms the date and time for booking a new appointment.
@@ -196,7 +196,7 @@ async def book_appointment(
     "Content-Type": "application/json"
     }
     payload = {
-        "conversation_id": call_id,
+        "conversation_id": ctx.session.userdata.call_id,
         "caller_name": name,
         "date": date,
         "time": time,
@@ -356,10 +356,21 @@ Brief summary in 100-200 characters from a first-person perspective"""
 
 @llm.function_tool
 async def call_back(agent_id: str,
+                    city: str,
+                    type: Literal["absolute", "relative"],
                     contact_phone: str,
-                    time: str,
-                    timezone: str):
+                    time: int,
+                    timezone: str,
+                    ctx: RunContext):
     """Use this tool to call the user back at a later time. Only use this tool if the user has explicitly requested a callback and provided a contact number, or if you have been instructed to do so by the user. Do not use this tool for any other reason.
+
+    Args:
+        agent_id: Unique mongo id for the current agent
+        city: City of the caller for timezone compatibility
+        type: Type of the time, can be either "absolute" or "relative" based on callers' input
+        contact_phone: Phone number of the caller
+        time: Time the user requested for a callback
+        meridiem: "am" or "pm"
     """
     headers = {
     "x-agent-secret": settings.N1_ISC_API_KEY,
@@ -367,8 +378,12 @@ async def call_back(agent_id: str,
     payload = {
         "agentId": agent_id,
         "contact_phone": contact_phone,
+        "type": type,
         "time": time,
-        "timezone": timezone
+        "timezone": timezone,
+        "conversation_id": ctx.session.userdata.call_id,
+        "city": city,
+        "current_utc_time":  datetime.now(timezone.utc).strftime("%Y-%m-%dT%H:%M:%SZ")
     }
     return await _request(
         "POST",
@@ -380,6 +395,7 @@ async def call_back(agent_id: str,
 @llm.function_tool
 async def do_not_call(agent_id: str,
                       contact_phone: str,
+                      ctx: RunContext
                       ):
     """Use this tool to mark that the user should not be called back. Only use this tool if the user has explicitly stated that they do not want a callback, or if you have been instructed to do so by the user. Do not use this tool for any other reason.
     """
@@ -389,6 +405,7 @@ async def do_not_call(agent_id: str,
     payload = {
         "agentId": agent_id,
         "contact_phone": contact_phone,
+        "conversation_id": ctx.session.userdata.call_id
     }
     
     return await _request(
@@ -451,6 +468,6 @@ async def transfer_to_human(outbound_trunk: str, ctx: RunContext) -> None:
     )
     
     # Wait for the agent to finish speaking the intro
-    # await ctx.wait_for_playout()
+    await ctx.wait_for_playout()
 
-    # ctx.session.shutdown()
+    ctx.session.shutdown()

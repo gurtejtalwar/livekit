@@ -55,19 +55,15 @@ vad = silero.VAD.load(
 
 class InboundAgent(Agent):
     def __init__(self,
-                 stt: stt.STT,
-                 llm: llm.LLM,
-                 tts: tts.TTS,
                  config: AgentConfig):
         tools = resolve_tools(config)
         super().__init__(
-            instructions=config.system_prompt,
-            stt=stt,#language="multi"), #TODO can be set dynamically based on agent config
-            # stt=assemblyai.STT(model="universal-streaming-multilingual"),
-            llm=llm,
-            tts=tts,
-            turn_detection=EnglishModel(),
+            stt=config.lk_plugins.lk_stt,
+            llm=config.lk_plugins.lk_llm,
+            tts=config.lk_plugins.lk_tts,
             tools=tools,
+            instructions=config.system_prompt,
+            turn_detection=EnglishModel(),
             allow_interruptions=config.allow_interruptions,
             min_endpointing_delay=0.2,
             max_endpointing_delay=3,
@@ -80,7 +76,6 @@ class InboundAgent(Agent):
 
     async def on_enter(self):
         logger.info("Node: on_enter called")
-        await call_models.on_call_arrived(self.config, self.session)
         if getattr(self.config, 'workflow_graph_json', None):
             logger.info("Initializing workflow engine from JSON payload.")
             await build_and_run_workflow(self, self.config.workflow_graph_json)
@@ -170,15 +165,11 @@ class AgentFactory:
         return await helper.load_agent_runtime_config(agent_id, user_data)    
 
     @staticmethod
-    def from_config(cfg: AgentConfig) :#-> Agent: 
-        stt = factory.STT.create(cfg)
-        llm = factory.LLM.create(cfg)
-        tts = factory.TTS.create(cfg)
-        return InboundAgent(
-            stt=stt,
-            llm=llm,
-            tts=tts,
-            config=cfg)
+    def from_config(cfg: AgentConfig) -> InboundAgent:
+        cfg.lk_plugins.lk_stt = factory.STT.create(cfg)
+        cfg.lk_plugins.lk_llm = factory.LLM.create(cfg)
+        cfg.lk_plugins.lk_tts = factory.TTS.create(cfg)
+        return InboundAgent(config=cfg)
 
     @staticmethod
     async def get_time_from_phone(phone_number: str):

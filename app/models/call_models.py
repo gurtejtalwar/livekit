@@ -246,18 +246,10 @@ async def on_call_arrived(config: AgentConfig, session: AgentSession) -> ObjectI
     Called when a call starts.
     Extracts minimal data from config + session.
     """
-    #TODO HAZARD REDUNDANCY
-    if config.call_type == "inbound":
-        config = await update_sip_context(config)
-        return await inbound_handler(config, session)
-    if config.call_type == "outbound":
-        config = await update_sip_context(config)
-        return await inbound_handler(config, session)
-    if config.call_type == "test-inbound":
+    return await inbound_handler(config, session)
+    
+async def on_test_inbound_call(config: AgentConfig, session: AgentSession):
         return await test_inbound_handler(config, session)
-    if config.call_type == "test-outbound":
-        config = await update_sip_context(config)
-        return await inbound_handler(config, session)
 
 
 async def on_call_ended(
@@ -549,46 +541,3 @@ async def test_inbound_handler(config: AgentConfig, session: AgentSession):
     session.userdata.call_id = str(call.id)
     return call.id
 
-#TODO REDUNDANT
-async def update_sip_context(config: AgentConfig):
-    # 1. Identify the SIP Participant
-    # Usually, in a telephony call, there is only one remote participant
-    caller = None
-    for p in config.ctx.room.remote_participants.values():
-        print(f"Remote Participants: \n {p}")
-        if p.identity.startswith("sip_"):
-            caller = p
-            break
-
-    # 2. Extract the IDs from attributes
-    trunk_id = None
-    dispatch_rule_id = None
-    
-    if caller:
-        attrs = caller.attributes or {}
-        print(f"SIP Attributes are: \n{attrs}")
-        livekit_call_id = attrs.get("sip.callID")
-        trunk_id = attrs.get("sip.trunkID")
-        dispatch_rule_id = attrs.get("sip.ruleID")
-        call_from = attrs.get("sip.phoneNumber")
-        call_to = attrs.get("sip.trunkPhoneNumber")
-        hostname = attrs.get("sip.hostname")
-        twilio_account_sid = attrs.get("sip.twilio.accountSid")
-        twilio_call_sid = attrs.get("sip.twilio.callSid")
-        logger.info(f"Inbound Call: Trunk={trunk_id}, Dispatch={dispatch_rule_id}")
-   
-    
-        # Example: resolve SIP details from LiveKit JobContext
-        config.call_details = CallDetails(
-            livekit_call_id=livekit_call_id,
-            trunk_id=trunk_id,
-            dispatch_rule=dispatch_rule_id,
-            call_to=call_to,
-            call_from=call_from,
-            twilio_call_sid=twilio_call_sid,
-            twilio_account_sid=twilio_account_sid,
-            hostname=hostname,
-        )
-    
-    print(f"Agent Config: {config}")
-    return config

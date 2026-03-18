@@ -3,6 +3,9 @@ from pydantic import MongoDsn
 from functools import cache
 from pydantic_settings import BaseSettings, SettingsConfigDict, PydanticBaseSettingsSource
 
+class DevSettings(BaseSettings):
+    SIP_EXCLUDED_CALL_TYPES: str = "test-inbound"
+
 class Settings(BaseSettings):
     ENVIRONMENT: Literal["prod", "dev", "qa", "stg", "local"]
     # LiveKit Configuration
@@ -45,6 +48,7 @@ class Settings(BaseSettings):
     TTS_ELEVENLABS_DEFAULT_VOICE_ID: str
     LLM_GROQ_DEFAULT_MODEL: str
 
+    DEV: DevSettings = DevSettings()
     model_config = SettingsConfigDict(env_file=".env", extra="ignore")
 
     @classmethod
