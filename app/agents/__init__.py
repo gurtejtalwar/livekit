@@ -1,9 +1,17 @@
 from typing import List, Optional, Literal
 from dataclasses import dataclass, field
 from enum import Enum
-from pydantic import BaseModel, ConfigDict
+from pydantic import BaseModel, ConfigDict, field_validator
 
 from livekit.agents import JobContext, stt, llm, tts
+
+CARTESIA_SPEED_MAP = {
+    "slowest": 0.5,
+    "slow": 0.75,
+    "normal": 1.0,
+    "fast": 1.25,
+    "fastest": 1.5,
+}
 
 @dataclass
 class UserData:
@@ -51,6 +59,30 @@ class TTSConfig(ModelBase):
     emotion: str
     language: str = "en"
 
+    # Ensure volume is always float
+    @field_validator("volume", mode="before")
+    @classmethod
+    def cast_volume(cls, v):
+        if v is None:
+            return None
+        return float(v)
+
+
+    # Normalize speed depending on model
+    @field_validator("speed", mode="after")
+    @classmethod
+    def normalize_speed(cls, v, info):
+        model = info.data.get("model")
+
+        # sonic-3 → convert enum → float
+        if model == "sonic-3":
+            if v not in CARTESIA_SPEED_MAP:
+                raise ValueError(f"Invalid speed: {v}")
+            return CARTESIA_SPEED_MAP[v]
+
+        # sonic-2 / sonic-turbo → keep string enum
+        return v
+    
 class SIPConfig(BaseModel):
     outbound_trunk_id: str
 
