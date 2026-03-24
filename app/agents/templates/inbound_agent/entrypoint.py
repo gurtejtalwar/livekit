@@ -53,7 +53,6 @@ class BGTasks:
 @inbound_server.rtc_session(agent_name="inbound-agent")
 async def inbound_entrypoint(ctx: JobContext):
     inactivity_task: asyncio.Task | None = None
-    recording_url = None
     egress_info=None
     # @session.on("metrics_collected")
     # def _on_metrics_collected(ev: MetricsCollectedEvent):
@@ -96,6 +95,7 @@ async def inbound_entrypoint(ctx: JobContext):
         logger.error("Egress Errored")
 
     async def post_call_tasks():
+        recording_url = None
         await log_usage()
         if agent_config.allow_recording is True:
             filename = await wait_for_egress()
