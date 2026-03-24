@@ -53,10 +53,14 @@ class VoiceAgent(Document):
 
     lastUpdatedTypes = ListField(StringField(), default=list)
 
-class VoiceAgentConfigLivekit(Document):
+class VoiceAgentConfig(Document):
     meta = {
-        "collection": "voice-agent-config-livekit",
-        "indexes": ["userId", "agentId"],
+        "collection": "voice-agent-config",
+        "indexes": [
+            "userId",
+            "agentId",
+            {"fields": ["userId", "agentId"], "unique": True}
+        ],
         "strict": False  # Allow mongoose extra fields
 
     }
@@ -64,43 +68,22 @@ class VoiceAgentConfigLivekit(Document):
     userId = ObjectIdField(required=True)
     agentId = ObjectIdField(required=True)
 
-    voiceType = StringField()
-    language = StringField()
-    autoSwitchLanguage = BooleanField()
-
-    tone = StringField()
-    speakingSpeed = FloatField()
-
-    stability = FloatField()
-    similarity = FloatField()
-
-    emotionAwareResponse = BooleanField()
-    callerMemory = BooleanField()
-
-    additionalLanguages = ListField(StringField())
-
-    tts = DictField()
-    stt = DictField()
-
-    purposes = ListField(StringField())
+    purposes = ListField(StringField(), default=list)
     welcomeMessage = StringField()
-    isWorkflowEnabled = BooleanField()
+    welcomeMessageLocked = BooleanField(default=False)
     isWelcomeMessageEdited = BooleanField()
     gptCustomizationEnabled = BooleanField()
     customErrorMessageEnabled = BooleanField()
     customErrorMessage = StringField()
-
     systemPrompt = StringField()
-    systemPromptConfidenceScore = StringField()
-
+    systemPromptConfidenceScore = StringField(choices=["low", "medium", "high"])
     dataToCollect = DictField()
     purposeConfigs = DictField()
-
-    additionalLanguages = ListField(StringField())
+    additionalLanguages = ListField(StringField(), default=list)
     llm = DictField()
-    tools = ListField(StringField())
-
-    timezone = StringField()
+    tools = ListField(StringField(), default=list)
+    timezone = StringField(default='Asia/Calcutta')
+    isWorkflowEnabled = BooleanField(default=False)
 
 class VoiceAgentIdentity(Document):
     meta = {
@@ -140,12 +123,51 @@ class VoiceAgentIdentity(Document):
 class VoiceAgentVoiceConfig(Document):
     meta = {
         "collection": "voice-config",
-        "indexes": ["userId", "agentId"],
+        "indexes": [
+            "userId",
+            "agentId",
+            {"fields": ["userId", "agentId"], "unique": True}
+        ],
         "strict": False  # Allow mongoose extra fields
     }
 
     userId = ObjectIdField(required=True)
     agentId = ObjectIdField(required=True)
+
+    # ── Voice / personality fields (original) ──
+    language = StringField()
+    welcomeMessage = StringField()
+    isWelcomeMessageEdited = BooleanField()
+    systemPrompt = StringField()
+    autoSwitchLanguage = BooleanField()
+    tone = StringField()  # enum VoiceTone
+    speakingSpeed = FloatField()
+    stability = FloatField()
+    similarity = FloatField()
+    emotionAwareResponse = BooleanField()
+    callerMemory = BooleanField()
+    additionalLanguages = ListField(StringField(), default=list)
+    audioFormat = StringField(choices=['telephony', 'widget'], default='widget')
+
+    tts = DictField()
+    stt = DictField()
+
+    # ── LiveKit-only fields (merged from voice-agent-config) ──
+    # Stored here for LiveKit agents so we only need one collection
+
+    purposes = ListField(StringField(), default=list)
+    gptCustomizationEnabled = BooleanField()
+    customErrorMessageEnabled = BooleanField()
+    customErrorMessage = StringField()
+    systemPromptConfidenceScore = StringField()
+    dataToCollect = DictField()
+    purposeConfigs = DictField()
+    llm = DictField()
+    tools = ListField(StringField(), default=list)
+    timezone = StringField(default='Asia/Calcutta')
+
+    # LiveKit workflow toggle
+    isWorkflowEnabled = BooleanField(default=False)
 
 
 
