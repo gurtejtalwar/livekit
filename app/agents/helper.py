@@ -128,7 +128,7 @@ async def load_agent_runtime_config(agent_id: str, user_data: UserData):
         allow_recording=advanced_doc.privacy.get("audioRecording", True),
         max_duration=advanced_doc.inboundTimeout.get("maxDuration", -1) if advanced_doc else None,
         human_phone_number=human_phone_number,
-        outbound_trunk_id=agent.outboundTrunkId
+        outbound_trunk_id=agent.outboundTrunkId if agent.outboundTrunkId else ""
     )
 
 
