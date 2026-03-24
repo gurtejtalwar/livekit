@@ -81,11 +81,6 @@ async def inbound_entrypoint(ctx: JobContext):
     #     if handler:
     #         handler(ev.metrics)
     
-    async def log_usage():
-        summary = usage_collector.get_summary()
-        logger.info(f"Usage: {summary}")
-        await call_models.save_usage_summary(session.userdata.call_id, summary)
-
     async def wait_for_egress():
         for _ in range(10): # Try for 30 seconds
             req = api.ListEgressRequest(egress_id=egress_info.egress_id)
@@ -105,7 +100,6 @@ async def inbound_entrypoint(ctx: JobContext):
         await post_call_analysis(session)
 
     await ctx.connect(auto_subscribe=AutoSubscribe.AUDIO_ONLY)
-    ctx.add_shutdown_callback(post_call_tasks)
 
     # Example: resolve from headers / room metadata / API
     metadata = json.loads(ctx.job.metadata)
@@ -175,6 +169,13 @@ async def inbound_entrypoint(ctx: JobContext):
 
     if agent_config.max_duration and agent_config.max_duration>0:
         asyncio.create_task(session_timeout_monitor(ctx, agent_config.max_duration))
+
+    async def log_usage():
+        summary = usage_collector.get_summary()
+        logger.info(f"Usage: {summary}")
+        await call_models.save_usage_summary(session.userdata.call_id, summary)
+
+    ctx.add_shutdown_callback(post_call_tasks)
 
 async def post_call_analysis(session: AgentSession):
     headers = {
