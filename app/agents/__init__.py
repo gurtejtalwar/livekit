@@ -40,6 +40,7 @@ class ModelBase(BaseModel):
 class STTConfig(ModelBase):
     min_endpoiniting: float = None
     max_endpointing: float = None
+    language: str = "en"
 class LLMConfig(ModelBase):
     max_tokens: int
 class TTSConfig(ModelBase):
@@ -48,6 +49,7 @@ class TTSConfig(ModelBase):
     speed: str|float
     volume: str|float
     emotion: str
+    language: str = "en"
 
 class SIPConfig(BaseModel):
     outbound_trunk_id: str

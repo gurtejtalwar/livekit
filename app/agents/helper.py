@@ -81,11 +81,13 @@ async def load_agent_runtime_config(agent_id: str, user_data: UserData):
     tts_speed = tts.get("speed", 0.5)
     tts_volume = tts.get("volume", 2.0)
     tts_emotion = tts.get("emotion", "Happy")
+    tts_language = tts.get("language", "en")
 
     # ---------- STT ----------
     stt = config_doc.stt if config_doc and config_doc.stt else {}
     stt_provider = stt.get("provider", "deepgram")
     stt_model = stt.get("model", "flux-general-en")
+    stt_language = stt.get("language", "en")
 
     # ---------- TOOLS ----------
     tools = config_doc.tools if config_doc and config_doc.tools else []
@@ -107,7 +109,8 @@ async def load_agent_runtime_config(agent_id: str, user_data: UserData):
         models=agents.ModelConfig(
             stt=agents.STTConfig(
                 provider=stt_provider,
-                model=stt_model
+                model=stt_model,
+                stt=stt_language
             ),
             llm=agents.LLMConfig(
                 model=llm_model,
@@ -120,7 +123,8 @@ async def load_agent_runtime_config(agent_id: str, user_data: UserData):
                 voice_id=tts_voice_id,
                 speed=tts_speed,
                 volume=tts_volume,
-                emotion=tts_emotion
+                emotion=tts_emotion,
+                language=tts_language,
             ),
         ),
         tools=tools,
