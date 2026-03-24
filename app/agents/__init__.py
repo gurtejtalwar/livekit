@@ -60,12 +60,12 @@ class TTSConfig(ModelBase):
     language: str = "en"
 
     # Ensure volume is always float
-    @field_validator("volume", mode="before")
-    @classmethod
-    def cast_volume(cls, v):
-        if v is None:
-            return None
-        return float(v)
+    # @field_validator("volume", mode="before")
+    # @classmethod
+    # def cast_volume(cls, v):
+    #     if v is None:
+    #         return None
+    #     return float(v)
 
 
     # Normalize speed depending on model
