@@ -350,6 +350,10 @@ async def sales_lead_generation(dummy: str): #TODO HAZARD BACKLOG
 async def feedback_review_collection(dummy: str): #TODO HAZARD BACKLOG
     pass
 
+@llm.function_tool()
+async def information_faq_mode(dummy: str): #TODO HAZARD BACKLOG
+    pass
+
 # ensure the following variables/env vars are set
 SIP_TRUNK_ID = os.getenv("LIVEKIT_SIP_OUTBOUND_TRUNK")  # "ST_abcxyz"
 SUPERVISOR_PHONE_NUMBER = os.getenv("LIVEKIT_SUPERVISOR_PHONE_NUMBER")  # "+12003004000"

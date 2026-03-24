@@ -15,7 +15,8 @@ from .tools import (
     do_not_call,
     detected_voicemail,
     feedback_review_collection,
-    sales_lead_generation
+    sales_lead_generation,
+    information_faq_mode,
 )
 
 # TOOL_REGISTRY = {
@@ -74,6 +75,10 @@ def resolve_sales_lead_generation(ctx: ToolContext):
 
 def resolve_feedback_review_collection(ctx: ToolContext):
     return feedback_review_collection
+
+def resolve_information_faq_mode(ctx: ToolContext):
+    return information_faq_mode
+
 # def resolve_utility_switch_to_english(ctx: ToolContext):
 #     return utility_tools.switch_to_english
 # def resolve_utility_switch_to_spanish(ctx: ToolContext):
@@ -99,6 +104,9 @@ TOOL_REGISTRY = {
     "detected_voicemail": resolve_detected_voicemail,
     "sales_lead_generation": resolve_sales_lead_generation,
     "feedback_review_collection": resolve_feedback_review_collection,
+    "information_faq_mode": resolve_information_faq_mode,
+
+
 #     "utility_switch_to_english": resolve_utility_switch_to_english, #TODO DB State Maintain from FE
 #     "utility_switch_to_spanish": resolve_utility_switch_to_spanish, #TODO DB State Maintain from FE
 #     "utility_switch_to_french": resolve_utility_switch_to_french, #TODO DB State Maintain from FE
