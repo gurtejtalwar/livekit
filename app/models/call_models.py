@@ -315,22 +315,43 @@ def normalize_chat_content(content) -> str | None: #TODO Move to utils
     return str(content)
 
 def build_structured_transcript(history_items: list) -> list[dict]:
-    """
-    Builds structured transcript with:
-    - role
-    - message
-    - function_calls (if any)
-    """
 
     transcript = []
-
-    # Temporary store of function calls by call_id
     function_call_map = {}
+
+    current_agent_index = None  # 🔥 track last agent message
 
     for item in history_items:
 
         # ------------------------
-        # Capture FunctionCall
+        # ChatMessage
+        # ------------------------
+        if isinstance(item, llm.ChatMessage):
+            role = "agent" if item.role == "assistant" else "user"
+
+            if isinstance(item.content, list):
+                message = " ".join(p.strip() for p in item.content if p)
+            else:
+                message = str(item.content).strip()
+
+            m = item.metrics if item.metrics else {}
+            performance_data = {k: v for k, v in m.items()}
+
+            transcript.append({
+                "role": role,
+                "message": message,
+                "created_at": item.created_at,
+                "performance": performance_data,
+                "tool_calls": []
+            })
+
+            if role == "agent":
+                current_agent_index = len(transcript) - 1  # ✅ track position
+
+            continue
+
+        # ------------------------
+        # FunctionCall
         # ------------------------
         if isinstance(item, llm.FunctionCall):
             try:
@@ -338,16 +359,23 @@ def build_structured_transcript(history_items: list) -> list[dict]:
             except Exception:
                 args = item.arguments
 
-            function_call_map[item.call_id] = {
+            call_obj = {
                 "name": item.name,
                 "arguments": args,
                 "output": None,
                 "is_error": False,
             }
+
+            function_call_map[item.call_id] = call_obj
+
+            # ✅ Attach immediately to correct agent message
+            if current_agent_index is not None:
+                transcript[current_agent_index]["tool_calls"].append(call_obj)
+
             continue
 
         # ------------------------
-        # Capture FunctionCallOutput
+        # FunctionCallOutput
         # ------------------------
         if isinstance(item, llm.FunctionCallOutput):
             if item.call_id in function_call_map:
@@ -358,52 +386,8 @@ def build_structured_transcript(history_items: list) -> list[dict]:
 
                 function_call_map[item.call_id]["output"] = parsed_output
                 function_call_map[item.call_id]["is_error"] = item.is_error
+
             continue
-
-        # ------------------------
-        # Capture ChatMessage with Metrics
-        # ------------------------
-        if isinstance(item, llm.ChatMessage):
-            role = "agent" if item.role == "assistant" else "user"
-            
-            # Normalize content
-            if isinstance(item.content, list):
-                message = " ".join(p.strip() for p in item.content if p)
-            else:
-                message = str(item.content).strip()
-
-            # Extract metrics directly from the object
-            # MetricsReport is a TypedDict, so we use .get()
-            m = item.metrics if item.metrics else {}
-            
-            # Create a dedicated performance object
-            performance_data = {}
-            for key, value in m.items():
-                # Store all available metrics (latencies, timestamps, etc.)
-                # Formatted to 3 decimal places for readability if it's a float
-                # if isinstance(value, float):
-                #     performance_data[key] = f"{value:.3f}s"
-                # else:
-                performance_data[key] = value
-
-            transcript.append({
-                "role": role,
-                "message": message,
-                "created_at": item.created_at,
-                "performance": performance_data,
-                "tool_calls": []
-            })
-    # ------------------------
-    # Attach function calls to last agent message
-    # (Most frameworks call functions immediately after assistant turn)
-    # ------------------------
-    for call in function_call_map.values():
-        # attach to most recent agent message
-        for entry in reversed(transcript):
-            if entry["role"] == "agent":
-                print("Entry:\n", entry)
-                entry["tool_calls"].append(call)
-                break
 
     return transcript
 
