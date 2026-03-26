@@ -625,10 +625,10 @@ Brief summary in 100-200 characters from a first-person perspective"""
 @llm.function_tool
 async def call_back(city: str,
                     type: Literal["absolute", "relative"],
-                    time: int,
                     user_timezone: str,
                     meridiem: Literal["am", "pm"],
-                    ctx: RunContext):
+                    ctx: RunContext,
+                    hour: Optional[int] = None):
     """Use this tool to call the user back at a later time. Only use this tool if the user has explicitly requested a callback and provided a contact number, or if you have been instructed to do so by the user. Do not use this tool for any other reason.
 
     Args:
@@ -636,6 +636,7 @@ async def call_back(city: str,
         city: City of the caller for user_timezone compatibility
         type: Type of the time, can be either "absolute" or "relative" based on callers' input
         time: Time the user requested for a callback
+        hour: Time of day, can be None if user gives "relative" time
         meridiem: "am" or "pm"
     """
     headers = {
@@ -645,7 +646,6 @@ async def call_back(city: str,
         "agentId": ctx.session.userdata.agent_id,
         "contact_phone": ctx.session.userdata.phone, #TODO QUERY - Feature for callback on different number? Misuse implications?,
         "type": type,
-        "time": time,
         "timezone": user_timezone,
         "meridiem": meridiem,
         "conversation_id": ctx.session.userdata.call_id,
