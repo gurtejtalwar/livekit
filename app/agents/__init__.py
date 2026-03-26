@@ -13,6 +13,13 @@ CARTESIA_SPEED_MAP = {
     "fastest": 1.5,
 }
 
+CARTESIA_VOLUME_MAP = {
+    "low": 0.7,
+    "normal": 1.0,
+    "high": 1.5,
+}
+
+
 @dataclass
 class UserData:
     user_id: str
@@ -63,22 +70,22 @@ class TTSConfig(BaseModel):
     volume: Union[str, float]
     language: str = "en"
 
-    # -----------------------
-    # Volume → always float
-    # -----------------------
     @field_validator("volume", mode="before")
     @classmethod
     def cast_volume(cls, v):
         if v is None:
             return None
-        try:
-            return float(v)
-        except Exception:
-            raise ValueError(f"Invalid volume: {v}")
 
-    # -----------------------
-    # Speed normalization
-    # -----------------------
+        if isinstance(v, str):
+            if v in CARTESIA_VOLUME_MAP:
+                return CARTESIA_VOLUME_MAP[v]
+            try:
+                return float(v)
+            except ValueError:
+                raise ValueError(f"Invalid volume: {v}")
+
+        return float(v)
+
     @field_validator("speed", mode="before")
     @classmethod
     def normalize_speed(cls, v, info):
@@ -87,24 +94,19 @@ class TTSConfig(BaseModel):
         if v is None:
             return None
 
-        # Try converting numeric strings → float
         if isinstance(v, str):
             try:
                 v = float(v)
             except ValueError:
-                pass  # keep as string (for enums)
+                pass
 
-        # sonic-3 → MUST be float
         if model == "sonic-3":
             if isinstance(v, (int, float)):
                 return float(v)
-
             if isinstance(v, str) and v in CARTESIA_SPEED_MAP:
                 return CARTESIA_SPEED_MAP[v]
-
             raise ValueError(f"Invalid speed: {v}")
 
-        # other models → allow as-is (string or float)
         return v
     
 class SIPConfig(BaseModel):
