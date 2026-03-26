@@ -266,6 +266,7 @@ async def cancel_appointment(booking_id: str):
 #/ -- Get Available Slots Tool --/
 @llm.function_tool
 async def get_available_slots(
+    city: str,
     ctx: RunContext,
 ):
     """
@@ -280,6 +281,8 @@ async def get_available_slots(
         f"{settings.N1_ISC_URL}/timeslot/get-voicebot-slots/{ctx.session.userdata.admin_id}",
         headers=headers,
         params={
+            "city": city,
+            "contact_phone": ctx.session.userdata.phone,
             "timeZoneName": "Asia/Calcutta", #TODO HAZARD
         }
     )
