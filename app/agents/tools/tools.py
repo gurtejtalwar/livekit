@@ -267,7 +267,6 @@ async def cancel_appointment(booking_id: str):
 @llm.function_tool
 async def get_available_slots(
     ctx: RunContext,
-    userId: str,
 ):
     """
     Get available appointment slots for a given agent and date.
@@ -278,7 +277,7 @@ async def get_available_slots(
     }
     result = await _request(
         "GET",
-        f"{settings.N1_ISC_URL}/timeslot/get-voicebot-slots/{userId}",
+        f"{settings.N1_ISC_URL}/timeslot/get-voicebot-slots/{ctx.session.userdata.admin_id}",
         headers=headers,
         params={
             "timeZoneName": "Asia/Calcutta", #TODO HAZARD
