@@ -1,4 +1,4 @@
-from typing import List, Optional, Literal
+from typing import List, Optional, Literal, Union
 from dataclasses import dataclass, field
 from enum import Enum
 from pydantic import BaseModel, ConfigDict, field_validator
@@ -52,47 +52,59 @@ class STTConfig(ModelBase):
     language: str = "en"
 class LLMConfig(ModelBase):
     max_tokens: int
-class TTSConfig(ModelBase):
+
+class TTSConfig(BaseModel):
+    # IMPORTANT: model must come before speed (used in validator)
+    model: str
+
     voice_id: str
     emotion: str
-    speed: str|float
-    volume: str|float
-    emotion: str
+    speed: Union[str, float]
+    volume: Union[str, float]
     language: str = "en"
 
-    # Ensure volume is always float
-    # @field_validator("volume", mode="before")
-    # @classmethod
-    # def cast_volume(cls, v):
-    #     if v is None:
-    #         return None
-    #     return float(v)
+    # -----------------------
+    # Volume → always float
+    # -----------------------
+    @field_validator("volume", mode="before")
+    @classmethod
+    def cast_volume(cls, v):
+        if v is None:
+            return None
+        try:
+            return float(v)
+        except Exception:
+            raise ValueError(f"Invalid volume: {v}")
 
-
-    # Normalize speed depending on model
-    @field_validator("speed", mode="after")
+    # -----------------------
+    # Speed normalization
+    # -----------------------
+    @field_validator("speed", mode="before")
     @classmethod
     def normalize_speed(cls, v, info):
         model = info.data.get("model")
+
+        if v is None:
+            return None
 
         # Try converting numeric strings → float
         if isinstance(v, str):
             try:
                 v = float(v)
-            except:
-                pass  # keep as string if not numeric
+            except ValueError:
+                pass  # keep as string (for enums)
 
-        # sonic-3 → must be float OR mapped enum
+        # sonic-3 → MUST be float
         if model == "sonic-3":
             if isinstance(v, (int, float)):
                 return float(v)
 
-            if v in CARTESIA_SPEED_MAP:
+            if isinstance(v, str) and v in CARTESIA_SPEED_MAP:
                 return CARTESIA_SPEED_MAP[v]
 
             raise ValueError(f"Invalid speed: {v}")
 
-        # sonic-2 / turbo → allow enum or raw string
+        # other models → allow as-is (string or float)
         return v
     
 class SIPConfig(BaseModel):
