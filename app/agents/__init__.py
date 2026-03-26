@@ -20,6 +20,7 @@ class UserData:
     email: str
     phone: str
     agent_id: str = ""
+    admin_id: str = ""
     user_timezone: str = ""
     user_current_time: str = ""
     call_id: str = None
@@ -116,7 +117,9 @@ class AgentConfig(BaseModel):
     
     user_id: str
     agent_id: str
+    admin_id: str
     agent_name: str
+
     knowledge_base_id: Optional[str] = None
     workflow_graph_json: Optional[dict] = None
 

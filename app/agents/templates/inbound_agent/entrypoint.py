@@ -119,6 +119,7 @@ async def inbound_entrypoint(ctx: JobContext):
     agent_config = await AgentFactory.load_agent_config(user_data,agent_id)
     user_data.outbound_trunk_id = agent_config.outbound_trunk_id
     user_data.human_escalation_phone = agent_config.human_phone_number
+    user_data.admin_id = agent_config.admin_id
     agent_config.call_type = metadata["call_type"]
 
     # Start Egress Service if recording allowed
