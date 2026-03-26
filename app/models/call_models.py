@@ -322,7 +322,7 @@ def build_structured_transcript(history_items: list) -> list[dict]:
     current_agent_index = None  # 🔥 track last agent message
 
     for item in history_items:
-
+        print(f"Item: /n: {item}")
         # ------------------------
         # ChatMessage
         # ------------------------
