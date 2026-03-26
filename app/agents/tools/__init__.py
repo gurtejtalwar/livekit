@@ -82,6 +82,9 @@ def resolve_information_faq_mode(ctx: ToolContext):
 
 def resolve_customer_support(ctx: ToolContext):
     return customer_support
+
+def resolve_follow_ups_reminders(ctx: ToolContext):
+    return None
 # def resolve_utility_switch_to_english(ctx: ToolContext):
 #     return utility_tools.switch_to_english
 # def resolve_utility_switch_to_spanish(ctx: ToolContext):
@@ -107,8 +110,9 @@ TOOL_REGISTRY = {
     "detected_voicemail": resolve_detected_voicemail,
     "sales_lead_generation": resolve_sales_lead_generation,
     "customer_support": resolve_customer_support,
-    "feedback_review_collection": resolve_feedback_review_collection, #TODO HAZARD BACKLOG
+    "feedback_review_collection": resolve_feedback_review_collection,
     "information_faq_mode": resolve_information_faq_mode, #TODO HAZARD BACKLOG
+    "follow_ups_reminders": resolve_follow_ups_reminders, #TODO HAZARD BACKLOG
     
 
 
