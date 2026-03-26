@@ -16,6 +16,7 @@ class VoiceAgent(Document):
     }
 
     userId = ObjectIdField(required=True)
+    adminId = ObjectIdField(required=True)
     agentName = StringField(required=True)
 
     type = StringField(default="voice")

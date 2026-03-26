@@ -17,6 +17,7 @@ from .tools import (
     feedback_review_collection,
     sales_lead_generation,
     information_faq_mode,
+    customer_support
 )
 
 # TOOL_REGISTRY = {
@@ -79,6 +80,8 @@ def resolve_feedback_review_collection(ctx: ToolContext):
 def resolve_information_faq_mode(ctx: ToolContext):
     return information_faq_mode
 
+def resolve_customer_support(ctx: ToolContext):
+    return customer_support
 # def resolve_utility_switch_to_english(ctx: ToolContext):
 #     return utility_tools.switch_to_english
 # def resolve_utility_switch_to_spanish(ctx: ToolContext):
@@ -103,8 +106,10 @@ TOOL_REGISTRY = {
     "do_not_call": resolve_do_not_call,
     "detected_voicemail": resolve_detected_voicemail,
     "sales_lead_generation": resolve_sales_lead_generation,
-    "feedback_review_collection": resolve_feedback_review_collection,
-    "information_faq_mode": resolve_information_faq_mode,
+    "customer_support": resolve_customer_support,
+    "feedback_review_collection": resolve_feedback_review_collection, #TODO HAZARD BACKLOG
+    "information_faq_mode": resolve_information_faq_mode, #TODO HAZARD BACKLOG
+    
 
 
 #     "utility_switch_to_english": resolve_utility_switch_to_english, #TODO DB State Maintain from FE

@@ -200,7 +200,7 @@ async def book_appointment(
         "caller_name": name,
         "date": date,
         "time": time,
-        "agentId": agentId,
+        "agentId": ctx.session.userdata.agent_id,
         "customFields": customFields or {}
     }
 
@@ -282,9 +282,8 @@ async def get_available_slots_DEPRECATED(
 @llm.function_tool
 async def reschedule_appointment(
     booking_id: str,
-    contact_number: str,
     time: str,
-    agentId: str,
+    ctx: RunContext,
     # customFields: dict | None = None
 ):
     """
@@ -296,9 +295,9 @@ async def reschedule_appointment(
     }
     payload = {
         "booking_id": booking_id,
-        "contact_phone": contact_number,
+        "contact_phone": ctx.session.userdata.phone, #TODO QUERY - Feature for callback on different number? Misuse implications?,
         "time": time,
-        "agentId": agentId,
+        "agentId": ctx.session.userdata.agent_id,
         # "customFields": customFields or {}
     }
 
@@ -340,18 +339,239 @@ async def create_crm_lead(
         headers=headers,
         json=payload,
     )
+@llm.function_tool
+async def customer_support(
+    caller_name: str,
+    contact_email: str,
+    issue_category: str,
+    issue_description: str,
+    ctx: RunContext,
+):
+    """
+    Create a customer support ticket.
+
+    This tool must ONLY be used after:
+    - The caller explicitly agrees to create a support ticket
+    - All required information has been collected
+
+    ----------------------------
+    PARAMETER DEFINITIONS
+    ----------------------------
+
+    caller_name:
+        Name of the caller creating the support ticket.
+        Extract from the conversation if provided.
+        If missing, ask the user before calling the tool.
+
+    contact_email:
+        Email address of the caller.
+        Must be explicitly provided by the user.
+        Do NOT infer or guess. Ask if missing.
+
+    issue_category:
+        Category of the issue. Must be one of:
+        - "technical" → bugs, errors, API issues, integrations, audio/call problems
+        - "general" → billing, account, subscription, general inquiries
+
+        Determine this based on the user's problem description.
+
+    issue_description:
+        Clear and concise description of the issue.
+        Use the caller’s own words where possible.
+        If multiple issues are mentioned, summarize them into one.
+        Do NOT ask again if already clearly described.
+
+    ----------------------------
+    EXECUTION RULES
+    ----------------------------
+
+    - Do NOT call this tool without explicit user consent
+    - Ask for missing fields ONE AT A TIME
+    - Do NOT ask for phone number
+    - Do NOT re-ask for already provided information
+    - As soon as all required fields are available, call the tool immediately
+    - Do NOT continue conversation after all fields are collected
+
+    ----------------------------
+    FAILURE HANDLING
+    ----------------------------
+
+    - If the tool fails:
+        - Do NOT retry automatically
+        - Do NOT ask the user to repeat inputs
+        - Apologize once
+        - Inform the user the request cannot be completed right now
+        - Offer a fallback (manual follow-up or retry later)
+    """
+    headers = {
+    "x-agent-secret": settings.N1_ISC_API_KEY,
+    "Content-Type": "application/json"
+    }
+
+    payload = {
+        "caller_name": caller_name,
+        "contact_email": contact_email,
+        "contact_phone": ctx.session.userdata.phone, #TODO QUERY - Feature for callback on different number? Misuse implications?
+        "conversation_id": ctx.session.userdata.call_id,
+        "issue_category": issue_category,
+        "issue_description": issue_description,
+        "agentId": ctx.session.userdata.agent_id,
+    }
+
+    return await _request(
+        method="POST",
+        headers=headers,
+        url=f"{settings.N3_ISC_URL}/customer-ticket/create",
+        json=payload,
+    )
+
+@llm.function_tool
+async def sales_lead_generation(
+    name: str,
+    email: str,
+    company: str,
+    ctx: RunContext,
+):
+    """
+    Create a sales lead from the conversation.
+
+    This tool must ONLY be used after:
+    - The caller explicitly agrees to be contacted or followed up
+    - All required information has been collected
+
+    ----------------------------
+    PARAMETER DEFINITIONS
+    ----------------------------
+
+    name:
+        Name of the caller/lead.
+        Extract from the conversation if provided.
+        If missing, ask the user before calling the tool.
+
+    email:
+        Email address of the caller.
+        Must be explicitly provided by the user.
+        Do NOT infer or guess.
+        Confirm if unclear.
+
+    company:
+        Company name of the caller.
+        Extract if mentioned.
+        If not provided, ask the user.
+
+    ----------------------------
+    EXECUTION RULES
+    ----------------------------
+
+    - Do NOT call this tool without explicit user consent
+    - Ask for missing fields ONE AT A TIME
+    - Do NOT ask for phone number
+    - Do NOT ask for adminId
+    - Do NOT re-ask for already provided information
+    - As soon as all required fields are available, call the tool immediately
+    - Do NOT continue conversation after all fields are collected
+
+    ----------------------------
+    FAILURE HANDLING
+    ----------------------------
+
+    - If the tool fails:
+        - Do NOT retry automatically
+        - Do NOT ask the user to repeat inputs
+        - Apologize once
+        - Inform the user the request cannot be completed right now
+        - Offer a fallback (manual follow-up or retry later)
+    """
+
+    headers = {
+        "x-agent-secret": settings.N1_ISC_API_KEY,
+        "Content-Type": "application/json"
+    }
+
+    payload = {
+        "name": name,
+        "email": email,
+        "phone": ctx.session.userdata.phone,
+        "company": company,
+        "conversationId": ctx.session.userdata.call_id,
+        "adminId": ctx.session.userdata.admin_id,
+    }
+
+    return await _request(
+        method="POST",
+        headers=headers,
+        url=f"{settings.N3_ISC_URL}/api/lead/voicebot/lead-create",
+        json=payload,
+    )
+
 
 @llm.function_tool()
-async def sales_lead_generation(dummy: str): #TODO HAZARD BACKLOG
-    pass
+async def feedback_review_collection(
+    rating: int,
+    ctx: RunContext,
+):
+    """
+    Collect customer service feedback rating.
 
+    This tool must ONLY be used in outbound calls after:
+    - The customer is asked to rate their experience
+    - A valid rating (1–5) is explicitly provided
+
+    ----------------------------
+    PARAMETER DEFINITIONS
+    ----------------------------
+
+    rating:
+        Customer rating for the service.
+        Must be an integer between 1 and 5.
+        Only accept valid numeric responses.
+        If the user provides invalid input (e.g., "good", "10", "zero"),
+        ask them to provide a rating between 1 and 5.
+
+    ----------------------------
+    EXECUTION RULES
+    ----------------------------
+
+    - Do NOT call this tool without a valid rating (1–5)
+    - Do NOT ask for phone number
+    - Do NOT ask for any additional information
+    - As soon as a valid rating is received, call the tool immediately
+    - Do NOT continue conversation after rating is collected
+    - Do NOT use this tool for complaints or support issues
+
+    ----------------------------
+    FAILURE HANDLING
+    ----------------------------
+
+    - If the tool fails:
+        - Do NOT retry automatically
+        - Do NOT ask the user to repeat inputs
+        - Apologize once
+        - Inform the user the request cannot be completed right now
+        - Offer a fallback (manual follow-up or retry later)
+    """
+
+    headers = {
+        "x-agent-secret": settings.N1_ISC_API_KEY,
+        "Content-Type": "application/json"
+    }
+
+    payload = {
+        "rating": rating,
+        "contact_phone": ctx.session.userdata.phone,
+        "conversation_id": ctx.session.userdata.call_id,
+        "agentId": ctx.session.userdata.agent_id,
+    }
+
+    return await _request(
+        method="POST",
+        headers=headers,
+        url=f"{settings.N3_ISC_URL}/service-feedback",
+        json=payload,
+    )
 
 @llm.function_tool()
-async def feedback_review_collection(dummy: str): #TODO HAZARD BACKLOG
-    pass
-
-@llm.function_tool()
-async def information_faq_mode(dummy: str): #TODO HAZARD BACKLOG
+async def information_faq_mode(dummy: str): 
     pass
 
 # ensure the following variables/env vars are set
@@ -367,10 +587,8 @@ WHY a human agent is requested or needed at this point
 Brief summary in 100-200 characters from a first-person perspective"""
 
 @llm.function_tool
-async def call_back(agent_id: str,
-                    city: str,
+async def call_back(city: str,
                     type: Literal["absolute", "relative"],
-                    contact_phone: str,
                     time: int,
                     timezone: str,
                     ctx: RunContext):
@@ -380,7 +598,6 @@ async def call_back(agent_id: str,
         agent_id: Unique mongo id for the current agent
         city: City of the caller for timezone compatibility
         type: Type of the time, can be either "absolute" or "relative" based on callers' input
-        contact_phone: Phone number of the caller
         time: Time the user requested for a callback
         meridiem: "am" or "pm"
     """
@@ -388,8 +605,8 @@ async def call_back(agent_id: str,
     "x-agent-secret": settings.N1_ISC_API_KEY,
     }
     payload = {
-        "agentId": agent_id,
-        "contact_phone": contact_phone,
+        "agentId": ctx.session.userdata.agent_id,
+        "contact_phone": ctx.session.userdata.phone, #TODO QUERY - Feature for callback on different number? Misuse implications?,
         "type": type,
         "time": time,
         "timezone": timezone,
@@ -405,18 +622,15 @@ async def call_back(agent_id: str,
     )
 
 @llm.function_tool
-async def do_not_call(agent_id: str,
-                      contact_phone: str,
-                      ctx: RunContext
-                      ):
+async def do_not_call(ctx: RunContext):
     """Use this tool to mark that the user should not be called back. Only use this tool if the user has explicitly stated that they do not want a callback, or if you have been instructed to do so by the user. Do not use this tool for any other reason.
     """
     headers = {
     "x-agent-secret": settings.N1_ISC_API_KEY,
     }
     payload = {
-        "agentId": agent_id,
-        "contact_phone": contact_phone,
+        "agentId": ctx.session.userdata.agent_id,
+        "contact_phone": ctx.session.userdata.phone, #TODO QUERY - Feature for callback on different number? Misuse implications?,
         "conversation_id": ctx.session.userdata.call_id
     }
     
