@@ -354,6 +354,7 @@ def build_structured_transcript(history_items: list) -> list[dict]:
         # FunctionCall
         # ------------------------
         if isinstance(item, llm.FunctionCall):
+            print(f"Function Call item: \n{item}")
             try:
                 args = json.loads(item.arguments) if item.arguments else {}
             except Exception:
@@ -378,6 +379,7 @@ def build_structured_transcript(history_items: list) -> list[dict]:
         # FunctionCallOutput
         # ------------------------
         if isinstance(item, llm.FunctionCallOutput):
+            print(f"Function Call Result Item: \n{item}")
             if item.call_id in function_call_map:
                 try:
                     parsed_output = json.loads(item.output)
