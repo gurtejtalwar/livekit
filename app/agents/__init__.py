@@ -60,7 +60,7 @@ class STTConfig(ModelBase):
 class LLMConfig(ModelBase):
     max_tokens: int
 
-class TTSConfig(BaseModel):
+class TTSConfig(ModelBase):
     # IMPORTANT: model must come before speed (used in validator)
     model: str
 
