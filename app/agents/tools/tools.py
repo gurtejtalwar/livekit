@@ -150,7 +150,41 @@ async def hangup_call(ctx: RunContext):
 @llm.function_tool
 async def end_call(ctx: RunContext,
                    reason: str = ""):
-    """Use this tool ONLY when the user has signaled they wish to end the current call."""
+    """
+    End the current call session gracefully.
+
+    This tool must ONLY be used when:
+    - The user explicitly indicates they want to end the call
+    - The conversation has naturally concluded
+    ----------------------------
+    reason:
+        Optional reason for ending the call.
+    ----------------------------
+    EXECUTION RULES
+    ----------------------------
+
+    - Use this tool ONLY when the user clearly wants to end the call
+    - Examples include:
+        - "bye"
+        - "goodbye"
+        - "that's all"
+        - "thanks, that's it"
+        - explicit confirmation to end the call
+    - Do NOT call this tool prematurely
+    - Always ensure a proper closing statement is delivered before ending the call
+    - Do NOT continue conversation after triggering this tool
+    - Only execute this tool when intent to end the call is FINAL and unambiguous
+
+    ----------------------------
+    FAILURE HANDLING
+    ----------------------------
+
+    - If the call termination fails:
+        - Do NOT retry repeatedly
+        - Attempt a graceful fallback closing message
+        - Ensure no further interaction continues after failure
+    """
+   
     session = ctx.session
     session.generate_reply(instructions="You/User have chosen to end the call. Reply with a closing statement and do not say anything after this. Then end the call.")
     await ctx.wait_for_playout() # Ensure agent finishes speaking
@@ -622,7 +656,8 @@ async def call_back(city: str,
     )
 
 @llm.function_tool
-async def do_not_call(ctx: RunContext):
+async def do_not_call(reason: str,
+                      ctx: RunContext):
     """Use this tool to mark that the user should not be called back. Only use this tool if the user has explicitly stated that they do not want a callback, or if you have been instructed to do so by the user. Do not use this tool for any other reason.
     """
     headers = {
