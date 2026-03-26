@@ -283,7 +283,7 @@ async def get_available_slots(
         params={
             "city": city,
             "contact_phone": ctx.session.userdata.phone,
-            "timeZoneName": "Asia/Calcutta", #TODO HAZARD
+            "timezoneName": "Asia/Calcutta", #TODO HAZARD
         }
     )
     print("Available slots result:\n", result)
@@ -626,13 +626,14 @@ Brief summary in 100-200 characters from a first-person perspective"""
 async def call_back(city: str,
                     type: Literal["absolute", "relative"],
                     time: int,
-                    timezone: str,
+                    user_timezone: str,
+                    meridiem: Literal["am", "pm"],
                     ctx: RunContext):
     """Use this tool to call the user back at a later time. Only use this tool if the user has explicitly requested a callback and provided a contact number, or if you have been instructed to do so by the user. Do not use this tool for any other reason.
 
     Args:
         agent_id: Unique mongo id for the current agent
-        city: City of the caller for timezone compatibility
+        city: City of the caller for user_timezone compatibility
         type: Type of the time, can be either "absolute" or "relative" based on callers' input
         time: Time the user requested for a callback
         meridiem: "am" or "pm"
@@ -645,7 +646,8 @@ async def call_back(city: str,
         "contact_phone": ctx.session.userdata.phone, #TODO QUERY - Feature for callback on different number? Misuse implications?,
         "type": type,
         "time": time,
-        "timezone": timezone,
+        "timezone": user_timezone,
+        "meridiem": meridiem,
         "conversation_id": ctx.session.userdata.call_id,
         "city": city,
         "current_utc_time":  datetime.now(timezone.utc).strftime("%Y-%m-%dT%H:%M:%SZ")
