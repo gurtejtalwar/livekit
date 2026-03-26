@@ -629,15 +629,76 @@ async def call_back(city: str,
                     meridiem: Literal["am", "pm"],
                     ctx: RunContext,
                     hour: Optional[int] = None):
-    """Use this tool to call the user back at a later time. Only use this tool if the user has explicitly requested a callback and provided a contact number, or if you have been instructed to do so by the user. Do not use this tool for any other reason.
+    """
+    Schedule a callback for the user at a later time.
 
-    Args:
-        agent_id: Unique mongo id for the current agent
-        city: City of the caller for user_timezone compatibility
-        type: Type of the time, can be either "absolute" or "relative" based on callers' input
-        time: Time the user requested for a callback
-        hour: Time of day, can be None if user gives "relative" time
-        meridiem: "am" or "pm"
+    This tool must ONLY be used when:
+    - The user explicitly requests a callback
+    - The user agrees to be contacted later
+    - A valid callback time can be determined
+
+    ----------------------------
+    PARAMETER DEFINITIONS
+    ----------------------------
+
+    city:
+        City of the caller.
+        Used to help determine or validate the user's timezone.
+        Extract from conversation if mentioned, otherwise infer from context if available.
+
+    type:
+        Type of time provided by the user:
+        - "absolute" → specific time (e.g., "call me at 5 PM")
+        - "relative" → relative time (e.g., "call me in 2 hours")
+
+        Choose based on how the user expresses the callback time.
+
+    meridiem:
+        Indicates whether the time is AM or PM.
+        Must be either "am" or "pm".
+        Required for absolute time interpretation.
+
+    hour:
+        Hour of the callback (1–12).
+        Required ONLY when type = "absolute".
+        Should be omitted (None) for relative time requests.
+
+        The LLM does NOT control this parameter.
+
+    ----------------------------
+    EXECUTION RULES
+    ----------------------------
+
+    - Do NOT call this tool unless the user clearly requests a callback
+    - Confirm intent if unclear before calling
+    - Ensure time information is complete and valid
+    - Ask for missing details ONE AT A TIME
+    - Do NOT ask for phone number (use system-provided value)
+    - Do NOT proceed if time is ambiguous or incomplete
+    - Call the tool immediately once all required details are available
+    - Do NOT continue conversation after scheduling the callback
+
+    ----------------------------
+    TIME HANDLING RULES
+    ----------------------------
+
+    - If user provides absolute time:
+        → require hour + meridiem
+    - If user provides relative time:
+        → do NOT use hour
+    - Validate all time inputs before execution
+    - Avoid assumptions for unclear time expressions
+
+    ----------------------------
+    FAILURE HANDLING
+    ----------------------------
+
+    - If the tool fails:
+        - Do NOT retry automatically
+        - Do NOT ask the user to repeat inputs
+        - Apologize once
+        - Inform the user the request cannot be completed right now
+        - Offer a fallback (manual follow-up or retry later)
     """
     headers = {
     "x-agent-secret": settings.N1_ISC_API_KEY,
@@ -646,7 +707,7 @@ async def call_back(city: str,
         "agentId": ctx.session.userdata.agent_id,
         "contact_phone": ctx.session.userdata.phone, #TODO QUERY - Feature for callback on different number? Misuse implications?,
         "type": type,
-        "timezone": user_timezone,
+        # "timezone": user_timezone,
         "meridiem": meridiem,
         "conversation_id": ctx.session.userdata.call_id,
         "city": city,

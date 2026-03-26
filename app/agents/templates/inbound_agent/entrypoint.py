@@ -108,14 +108,15 @@ async def inbound_entrypoint(ctx: JobContext):
     # Example: resolve from headers / room metadata / API
     metadata = json.loads(ctx.job.metadata)
     agent_id = metadata["agent_id"]
-    ud.agent_id = agent_id
-    ud.user_timezone = ud.user_current_time = None
+
     print("*"*10,"\n")
     print(f"Received Agent Metadata:\n {metadata}\n")
     print("*"*10,"\n")
     print(f"Starting session with agent_id: {agent_id}")
 
     user_data = await AgentFactory.get_user_data(agent_id)
+    user_data.agent_id = agent_id
+    user_data.user_timezone = ud.user_current_time = None
     agent_config = await AgentFactory.load_agent_config(user_data,agent_id)
     user_data.outbound_trunk_id = agent_config.outbound_trunk_id
     user_data.human_escalation_phone = agent_config.human_phone_number
