@@ -74,13 +74,24 @@ class TTSConfig(ModelBase):
     def normalize_speed(cls, v, info):
         model = info.data.get("model")
 
-        # sonic-3 → convert enum → float
-        if model == "sonic-3":
-            if v not in CARTESIA_SPEED_MAP:
-                raise ValueError(f"Invalid speed: {v}")
-            return CARTESIA_SPEED_MAP[v]
+        # Try converting numeric strings → float
+        if isinstance(v, str):
+            try:
+                v = float(v)
+            except:
+                pass  # keep as string if not numeric
 
-        # sonic-2 / sonic-turbo → keep string enum
+        # sonic-3 → must be float OR mapped enum
+        if model == "sonic-3":
+            if isinstance(v, (int, float)):
+                return float(v)
+
+            if v in CARTESIA_SPEED_MAP:
+                return CARTESIA_SPEED_MAP[v]
+
+            raise ValueError(f"Invalid speed: {v}")
+
+        # sonic-2 / turbo → allow enum or raw string
         return v
     
 class SIPConfig(BaseModel):
