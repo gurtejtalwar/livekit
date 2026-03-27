@@ -171,6 +171,25 @@ async def outbound_entrypoint(ctx: JobContext):
     logger.info(f"connecting to room {ctx.room.name}")
     await ctx.connect()
 
+    try:
+        # Use explicit file_type to ensure the protobuf is well-formed for the server
+        await ctx.api.egress.start_room_composite_egress(
+            api.RoomCompositeEgressRequest(
+                room_name=ctx.room.name,
+                audio_only=True,
+                file_outputs=[
+                    api.EncodedFileOutput(
+                        file_type=api.EncodedFileType.MP3,
+                        filepath=f"recordings/outbound_{ctx.room.name}.mp3",
+                    )
+                ]
+            )
+        )
+        logger.info(f"Started egress for room {ctx.room.name}")
+    except Exception as e:
+        logger.exception("Failed to start egress:")
+
+
     # when dispatching the agent, we'll pass it the approriate info to dial the user
     # dial_info is a dict with the following keys:
     # - phone_number: the phone number to dial

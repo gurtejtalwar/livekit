@@ -25,7 +25,7 @@ class UserData:
     user_id: str
     name: str
     email: str
-    phone: str
+    phone: str = ""
     agent_id: str = ""
     admin_id: str = ""
     user_timezone: str = ""

@@ -625,7 +625,6 @@ Brief summary in 100-200 characters from a first-person perspective"""
 @llm.function_tool
 async def call_back(city: str,
                     type: Literal["absolute", "relative"],
-                    user_timezone: str,
                     meridiem: Literal["am", "pm"],
                     ctx: RunContext,
                     value: Optional[float] = None,
