@@ -628,6 +628,8 @@ async def call_back(city: str,
                     user_timezone: str,
                     meridiem: Literal["am", "pm"],
                     ctx: RunContext,
+                    value: Optional[float] = None,
+                    unit: Optional[str] = None,
                     hour: Optional[int] = None):
     """
     Schedule a callback for the user at a later time.
@@ -657,6 +659,20 @@ async def call_back(city: str,
         Indicates whether the time is AM or PM.
         Must be either "am" or "pm".
         Required for absolute time interpretation.
+
+    value:
+        Value of time for callback
+        Required ONLY when type = "relative".
+        Should be omitted (None) for absolute time requests.
+
+        The LLM does NOT control this parameter.
+
+    unit:
+        Unit of time provided for callback
+        Must be either "hour" or "minutes".
+        Should be omitted (None) for absolute time requests.
+
+        The LLM does NOT control this parameter.
 
     hour:
         Hour of the callback (1–12).
@@ -704,13 +720,15 @@ async def call_back(city: str,
     "x-agent-secret": settings.N1_ISC_API_KEY,
     }
     payload = {
-        "agentId": ctx.session.userdata.agent_id,
-        "contact_phone": ctx.session.userdata.phone, #TODO QUERY - Feature for callback on different number? Misuse implications?,
         "type": type,
-        # "timezone": user_timezone,
+        "value": value,
+        "unit": unit,
+        "hour": hour,
         "meridiem": meridiem,
-        "conversation_id": ctx.session.userdata.call_id,
         "city": city,
+        "contact_phone": ctx.session.userdata.phone, #TODO QUERY - Feature for callback on different number? Misuse implications?,
+        "conversation_id": ctx.session.userdata.call_id,
+        "agentId": ctx.session.userdata.agent_id,
         "current_utc_time":  datetime.now(timezone.utc).strftime("%Y-%m-%dT%H:%M:%SZ")
     }
     return await _request(
