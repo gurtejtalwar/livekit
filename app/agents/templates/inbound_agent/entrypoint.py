@@ -21,23 +21,17 @@ from app.agents import agent_metrics, UserData, AgentConfig, CallDetails
 from app.agents.factory.agent import AgentFactory
 from app.models import call_models
 from app.shared import schemas
-from app.shared import settings
+from app.shared.settings import get_settings
 from app.utils.requests import _request
 
-inbound_server = AgentServer()
-
+settings = get_settings()
 logger = logging.getLogger(__name__)
 
-settings = settings.get_settings()
-usage_collector = metrics.UsageCollector()
-
-#TODO Fetch from db
-ud = UserData(
-    user_id="6992f9020296c31229cfacf0",
-    name="Gurtej Singh",
-    email="gurtej@gmail.com",
-    phone="+917460015555"
+inbound_server = AgentServer(
+    initialize_process_timeout=settings.DEV.LK_AGENT_INIT_TIMEOUT,  # Set this to 30 or 60 seconds
+    shutdown_process_timeout=settings.DEV.LK_AGENT_SHUTDOWN_TIMEOUT,    # Good practice to increase this slightly too
 )
+usage_collector = metrics.UsageCollector()
 
 class BGTasks:
     def __init__(self):
@@ -116,7 +110,6 @@ async def inbound_entrypoint(ctx: JobContext):
 
     user_data = await AgentFactory.get_user_data(agent_id)
     user_data.agent_id = agent_id
-    user_data.user_timezone = ud.user_current_time = None
     agent_config = await AgentFactory.load_agent_config(user_data,agent_id)
     user_data.outbound_trunk_id = agent_config.outbound_trunk_id
     user_data.human_escalation_phone = agent_config.human_phone_number
@@ -160,7 +153,7 @@ async def inbound_entrypoint(ctx: JobContext):
     if metadata["call_type"] not in settings.DEV.SIP_EXCLUDED_CALL_TYPES:
         remote_participant = await ctx.wait_for_participant()
         if remote_participant.attributes.get("sip.phoneNumber", None):
-            ud.user_timezone, ud.user_current_time = await AgentFactory.get_time_from_phone(remote_participant.attributes["sip.phoneNumber"])
+            user_data.user_timezone = await AgentFactory.get_time_from_phone(remote_participant.attributes["sip.phoneNumber"])
             agent_config = await update_sip_context(ctx, agent_config)
             await call_models.inbound_handler(agent_config, session)
     else:

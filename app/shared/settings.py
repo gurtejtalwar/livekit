@@ -5,6 +5,8 @@ from pydantic_settings import BaseSettings, SettingsConfigDict, PydanticBaseSett
 
 class DevSettings(BaseSettings):
     SIP_EXCLUDED_CALL_TYPES: str = "test-inbound"
+    LK_AGENT_INIT_TIMEOUT: float = 30.0
+    LK_AGENT_SHUTDOWN_TIMEOUT: float = 20.0
 
 class Settings(BaseSettings):
     ENVIRONMENT: Literal["prod", "dev", "qa", "stg", "local"]
