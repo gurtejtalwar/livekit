@@ -242,21 +242,21 @@ class VoiceCallDetails(Document):
     created_at = DateTimeField(default=datetime.utcnow)
     updated_at = DateTimeField(default=datetime.utcnow)
 
-class VoiceCallLeads(Document):
-    meta = {
-        "collection": "voice-call-leads",
-        "indexes": [
-            "user_id",
-        ],
-    }
+# class VoiceCallLeads(Document):
+#     meta = {
+#         "collection": "voice-call-leads",
+#         "indexes": [
+#             "user_id",
+#         ],
+#     }
 
-    user_id = ObjectId()
+#     user_id = ObjectId()
 
-    phone = StringField() #TODO QUERY Need list?
-    name = StringField()
-    email = EmailField()
+#     phone = StringField() #TODO QUERY Need list?
+#     name = StringField()
+#     email = EmailField()
 
-    overall_summary = StringField()
+#     overall_summary = StringField()
 
 
 async def on_call_ended(
