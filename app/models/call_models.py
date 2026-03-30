@@ -19,6 +19,7 @@ from mongoengine import (
     ObjectIdField,
     ListField,
     DictField,
+    EmailField
 )
 from livekit.agents import llm, AgentSession
 from livekit.agents.metrics import UsageSummary
@@ -240,6 +241,21 @@ class VoiceCallDetails(Document):
     created_at = DateTimeField(default=datetime.utcnow)
     updated_at = DateTimeField(default=datetime.utcnow)
 
+class VoiceCallLeads(Document):
+    meta = {
+        "collection": "voice-call-leads",
+        "indexes": [
+            "user_id",
+        ],
+    }
+
+    user_id = ObjectId()
+
+    phone = StringField() #TODO QUERY Need list?
+    name = StringField()
+    email = EmailField()
+
+    overall_summary = StringField()
 
 async def on_call_arrived(config: AgentConfig, session: AgentSession) -> ObjectId:
     """
@@ -253,7 +269,6 @@ async def on_test_inbound_call(config: AgentConfig, session: AgentSession):
 
 
 async def on_call_ended(
-    config: AgentConfig,
     session: AgentSession,
     recording_url: str
 ):
