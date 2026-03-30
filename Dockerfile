@@ -30,4 +30,4 @@ COPY . .
 
 # 6. Execution
 # Replace 'app/main.py' with the actual path to your entry point script
-CMD ["python", "app/main.py", "start"]
+CMD ["python", "main.py", "start"]
