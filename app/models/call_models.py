@@ -216,6 +216,7 @@ class VoiceCallDetails(Document):
 
     agent_id = ObjectIdField()
     agent_name = StringField()
+    room_name = StringField()
     call_type = StringField()
 
     branch_id = StringField()
@@ -256,16 +257,6 @@ class VoiceCallLeads(Document):
     email = EmailField()
 
     overall_summary = StringField()
-
-async def on_call_arrived(config: AgentConfig, session: AgentSession) -> ObjectId:
-    """
-    Called when a call starts.
-    Extracts minimal data from config + session.
-    """
-    return await inbound_handler(config, session)
-    
-async def on_test_inbound_call(config: AgentConfig, session: AgentSession):
-        return await test_inbound_handler(config, session)
 
 
 async def on_call_ended(
@@ -500,6 +491,7 @@ async def inbound_handler(config: AgentConfig, session: AgentSession):
         user_id=config.user_id,
         agent_id=config.agent_id,
         agent_name=config.agent_name,
+        room_name=session.room_io.room.name if session.room_io and session.room_io.room else None,
         call_type=config.call_type,
         lk_metadata=LivekitMetadata(
             sip=sip_attrs,
