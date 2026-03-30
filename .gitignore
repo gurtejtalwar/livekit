@@ -6,3 +6,4 @@ prompts.txt
 dev_scripts/
 __pycache__/
 scripts/
+dev_containers/*
