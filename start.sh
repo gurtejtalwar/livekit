@@ -7,4 +7,4 @@ set -e
 cd dev_containers || { echo "Directory dev_containers not found"; exit 1; }
 
 # Run docker compose
-docker compose up
+docker compose up -d
