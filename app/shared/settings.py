@@ -50,6 +50,10 @@ class Settings(BaseSettings):
     TTS_ELEVENLABS_DEFAULT_VOICE_ID: str
     LLM_GROQ_DEFAULT_MODEL: str
 
+    LANGFUSE_PUBLIC_KEY: str
+    LANGFUSE_SECRET_KEY: str
+    LANGFUSE_HOST: str
+
     DEV: DevSettings = DevSettings()
     model_config = SettingsConfigDict(env_file=".env", extra="ignore")
 
