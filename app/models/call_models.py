@@ -242,15 +242,36 @@ class VoiceCallDetails(Document):
     created_at = DateTimeField(default=datetime.utcnow)
     updated_at = DateTimeField(default=datetime.utcnow)
 
-# class VoiceCallLeads(Document):
-#     meta = {
-#         "collection": "voice-call-leads",
-#         "indexes": [
-#             "user_id",
-#         ],
-#     }
+class LeadsSummary(EmbeddedDocument):
+    meta = {
+        "collection": "leads_summary",
+        "indexes": [
+            "user_id",
+        ],
+    }
 
-#     user_id = ObjectId()
+    user_id = ObjectIdField(required=True)
+    agent_id = ObjectIdField()
+    summary = StringField()
+
+class VoiceCallLeads(Document):
+    meta = {
+        "collection": "voice-call-leads",
+        "indexes": [
+            "user_id",
+        ],
+    }
+
+    user_id = ObjectIdField(required=True)
+    admin_id = ObjectIdField()
+
+    name = StringField()
+    phone = StringField()
+    email = EmailField()
+
+    agents_summary = EmbeddedDocumentListField(LeadsSummary)
+    overall_summary = StringField()
+
 
 #     phone = StringField() #TODO QUERY Need list?
 #     name = StringField()
@@ -535,3 +556,63 @@ async def test_inbound_handler(config: AgentConfig, session: AgentSession):
     session.userdata.call_id = str(call.id)
     return call.id
 
+
+
+async def upsert_voice_call_lead(
+    *,
+    phone: str,
+    user_id: str,
+    admin_id: str,
+    agent_id: str,
+    name: str | None = None,
+    email: str | None = None,
+    agent_summary: str | None = None,
+    overall_summary: str | None = None,
+):
+    """
+    Upserts a voice call lead using phone as unique identifier.
+    Updates only provided fields.
+    """
+
+    lead: VoiceCallLeads = VoiceCallLeads.objects(phone=phone).first()
+
+    if not lead:
+        lead:VoiceCallLeads = VoiceCallLeads(
+            user_id=ObjectId(user_id),
+            admin_id=ObjectId(admin_id),
+            phone=phone,
+            agents_summary=[]
+        )
+
+    # ---- Basic fields ----
+    if name:
+        lead.name = name
+
+    if email:
+        lead.email = email
+
+    # ---- Agent-specific summary ----
+    if agent_summary:
+        existing = next(
+            (s for s in lead.agents_summary if str(s.agent_id) == agent_id),
+            None
+        )
+
+        if existing:
+            existing.summary = agent_summary
+        else:
+            lead.agents_summary.append(
+                LeadsSummary(
+                    user_id=ObjectId(user_id),
+                    agent_id=ObjectId(agent_id),
+                    summary=agent_summary,
+                )
+            )
+
+    # ---- Overall summary ----
+    if overall_summary:
+        lead.overall_summary = overall_summary
+
+    lead.save()
+
+    return {"status": "success"}
