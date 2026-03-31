@@ -265,20 +265,13 @@ class VoiceCallLeads(Document):
     user_id = ObjectIdField(required=True)
     admin_id = ObjectIdField()
 
-    name = StringField()
-    phone = StringField()
+    phone = StringField()  #TODO QUERY Need list?
+    first_name = StringField()
+    last_name = StringField()
     email = EmailField()
 
     agents_summary = EmbeddedDocumentListField(LeadsSummary)
     overall_summary = StringField()
-
-
-#     phone = StringField() #TODO QUERY Need list?
-#     name = StringField()
-#     email = EmailField()
-
-#     overall_summary = StringField()
-
 
 async def on_call_ended(
     session: AgentSession,
@@ -564,7 +557,8 @@ async def upsert_voice_call_lead(
     user_id: str,
     admin_id: str,
     agent_id: str,
-    name: str | None = None,
+    first_name: str | None = None,
+    last_name: str | None = None,
     email: str | None = None,
     agent_summary: str | None = None,
     overall_summary: str | None = None,
@@ -585,8 +579,11 @@ async def upsert_voice_call_lead(
         )
 
     # ---- Basic fields ----
-    if name:
-        lead.name = name
+    if first_name:
+        lead.first_name = first_name
+
+    if last_name:
+        lead.last_name = last_name
 
     if email:
         lead.email = email
