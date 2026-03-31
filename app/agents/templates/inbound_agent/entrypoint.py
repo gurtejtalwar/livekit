@@ -95,7 +95,7 @@ async def inbound_entrypoint(ctx: JobContext):
         if agent_config.allow_recording is True:
             filename = await wait_for_egress()
             recording_url = f"{settings.AWS_BUCKET_ENDPOINT_RECORDING}/{filename}"
-        await call_models.on_call_ended(agent_config, session, recording_url)
+        await call_models.on_call_ended(session, recording_url)
         await post_call_analysis(session)
 
     await ctx.connect(auto_subscribe=AutoSubscribe.AUDIO_ONLY)
