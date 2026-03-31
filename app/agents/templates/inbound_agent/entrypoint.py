@@ -280,7 +280,8 @@ async def start_audio_only_egress(ctx: JobContext):
 #TODO MOVE
 import os
 import base64
-from livekit.agents.telemetry import set_tracer_provider
+from opentelemetry import trace  # Import the global trace entry point
+from livekit.agents.telemetry import set_tracer_provider as set_livekit_tracer
 
 def setup_langfuse(
     host: str | None = None, public_key: str | None = None, secret_key: str | None = None
@@ -290,16 +291,17 @@ def setup_langfuse(
     from opentelemetry.sdk.trace.export import BatchSpanProcessor
 
     public_key = public_key or settings.LANGFUSE_PUBLIC_KEY
-    secret_key = secret_key or settings.LANGFUSE_SECRET_KEY
-    host = host or settings.LANGFUSE_HOST
-
-    if not public_key or not secret_key or not host:
-        raise ValueError("LANGFUSE_PUBLIC_KEY, LANGFUSE_SECRET_KEY, and LANGFUSE_HOST must be set")
-
+    # ... (keep your auth logic)
+    
     langfuse_auth = base64.b64encode(f"{public_key}:{secret_key}".encode()).decode()
     os.environ["OTEL_EXPORTER_OTLP_ENDPOINT"] = f"{host.rstrip('/')}/api/public/otel"
     os.environ["OTEL_EXPORTER_OTLP_HEADERS"] = f"Authorization=Basic {langfuse_auth}"
 
     trace_provider = TracerProvider()
     trace_provider.add_span_processor(BatchSpanProcessor(OTLPSpanExporter()))
-    set_tracer_provider(trace_provider)
+    
+    # 1. Set for LiveKit specifically
+    set_livekit_tracer(trace_provider)
+    
+    # 2. Set as the Global provider for everything else
+    trace.set_tracer_provider(trace_provider)
