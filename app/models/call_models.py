@@ -525,6 +525,7 @@ async def test_inbound_handler(config: AgentConfig, session: AgentSession):
         agent_id=config.agent_id,
         agent_name=config.agent_name,
         call_type=config.call_type,
+        room_name=session.room_io.room.name if session.room_io and session.room_io.room else None,
         lk_metadata=LivekitMetadata(
             sip=sip_attrs
         ),
