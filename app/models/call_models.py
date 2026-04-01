@@ -553,10 +553,10 @@ async def test_inbound_handler(config: AgentConfig, session: AgentSession):
 
 async def upsert_voice_call_lead(
     *,
-    phone: str,
     user_id: str,
     admin_id: str,
     agent_id: str,
+    phone: str | None = None,
     first_name: str | None = None,
     last_name: str | None = None,
     email: str | None = None,
@@ -588,6 +588,9 @@ async def upsert_voice_call_lead(
     if email:
         lead.email = email
 
+    if phone:
+        lead.phone = phone
+
     # ---- Agent-specific summary ----
     if agent_summary:
         existing = next(
@@ -613,3 +616,11 @@ async def upsert_voice_call_lead(
     lead.save()
 
     return {"status": "success"}
+
+async def get_lead_by_phone(phone_number: str, user_id: str) -> VoiceCallLeads | None:
+    lead = VoiceCallLeads.objects(
+        phone=phone_number,
+        user_id=ObjectId(user_id)
+    ).first()
+
+    return lead

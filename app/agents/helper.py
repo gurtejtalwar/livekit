@@ -4,16 +4,27 @@ from app.shared import models
 from app import agents
 from app.agents.prompt import inbound
 from app.agents import UserData
+from app.models.call_models import get_lead_by_phone
 
 logger = logging.getLogger(__name__)
 
-async def get_user_data(agent_id, phone_number): #TODO HAZARD
-    return UserData(
-        user_id="6992f9020296c31229cfacf0",
-        name="Gurtej Singh",
-        email="gurtej@gmail.com",
-        phone="+917460015555"
-    )
+async def get_user_data(user_id: str, phone_number: str): #TODO HAZARD
+    lead = await get_lead_by_phone(phone_number, user_id)
+
+    if lead is not None:
+        return UserData(
+            user_id=str(lead.user_id),
+            name=lead.first_name,
+            email=lead.email,
+            phone=lead.phone
+        )
+    else:
+        return UserData(
+            user_id=None,
+            name=None,
+            email=None,
+            phone=phone_number
+        )
 
 async def load_agent_runtime_config(agent_id: str, user_data: UserData):
     workflow_doc = None

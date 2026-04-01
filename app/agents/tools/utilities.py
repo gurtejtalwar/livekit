@@ -6,6 +6,7 @@ from app.models.call_models import upsert_voice_call_lead
 async def update_lead_profile(
     first_name: str | None,
     last_name: str | None,
+    phone: str | None,
     email: str | None,
     # agent_summary: str | None,
     ctx: RunContext,
@@ -35,6 +36,11 @@ async def update_lead_profile(
     last_name:
         Last name of the caller.
         Extract only if clearly provided.
+        Do NOT guess.
+    
+    phone:
+        Phone number of the caller.
+        Extract only if explicitly stated.
         Do NOT guess.
 
     email:
@@ -70,7 +76,7 @@ async def update_lead_profile(
 
     try:
         await upsert_voice_call_lead(
-            phone=ctx.session.userdata.phone,
+            phone=phone,
             user_id=ctx.session.userdata.user_id,
             admin_id=ctx.session.userdata.admin_id,
             agent_id=ctx.session.userdata.agent_id,
