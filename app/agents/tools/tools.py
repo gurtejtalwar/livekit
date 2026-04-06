@@ -148,49 +148,25 @@ async def hangup_call(ctx: RunContext):
     )
 
 @llm.function_tool
-async def end_call(ctx: RunContext,
-                   reason: str = ""):
-    """
-    End the current call session gracefully.
+async def end_call(ctx: RunContext, reason: str = ""):
 
-    This tool must ONLY be used when:
-    - The user explicitly indicates they want to end the call
-    - The conversation has naturally concluded
-    ----------------------------
-    reason:
-        Optional reason for ending the call.
-    ----------------------------
-    EXECUTION RULES
-    ----------------------------
-
-    - Use this tool ONLY when the user clearly wants to end the call
-    - Examples include:
-        - "bye"
-        - "goodbye"
-        - "that's all"
-        - "thanks, that's it"
-        - explicit confirmation to end the call
-    - Do NOT call this tool prematurely
-    - Always ensure a proper closing statement is delivered before ending the call
-    - Do NOT continue conversation after triggering this tool
-    - Only execute this tool when intent to end the call is FINAL and unambiguous
-
-    ----------------------------
-    FAILURE HANDLING
-    ----------------------------
-
-    - If the call termination fails:
-        - Do NOT retry repeatedly
-        - Attempt a graceful fallback closing message
-        - Ensure no further interaction continues after failure
-    """
-   
     session = ctx.session
-    await session.generate_reply(instructions="You/User have chosen to end the call. Reply with a closing statement and do not say anything after this. Then end the call.")
-    await ctx.wait_for_playout() # Ensure agent finishes speaking
+
+    # 🗣️ Step 1: speak
+    speech = await session.say(
+        "Alright, thanks for your time. Have a great day!"
+    )
+
+    # 🧠 Step 2: wait OR get interrupted
+    await speech.wait_if_not_interrupted([])
+
+    # ❌ Step 3: user interrupted → abort ending
+    if speech.interrupted:
+        return
+
+    # ✅ Step 4: safe to end
     job_ctx = get_job_context()
     if job_ctx:
-        # Use job_ctx.api to delete the room
         await job_ctx.api.room.delete_room(
             api.DeleteRoomRequest(room=job_ctx.room.name)
         )
