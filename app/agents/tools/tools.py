@@ -186,7 +186,7 @@ async def end_call(ctx: RunContext,
     """
    
     session = ctx.session
-    session.generate_reply(instructions="You/User have chosen to end the call. Reply with a closing statement and do not say anything after this. Then end the call.")
+    await session.generate_reply(instructions="You/User have chosen to end the call. Reply with a closing statement and do not say anything after this. Then end the call.")
     await ctx.wait_for_playout() # Ensure agent finishes speaking
     job_ctx = get_job_context()
     if job_ctx:
