@@ -156,7 +156,7 @@ async def end_call(ctx: RunContext, reason: str = ""):
     speech = await session.say(
         "Alright, thanks for your time. Have a great day!"
     )
-
+    logger.info("TOOL: \n END CALL Message: \n", speech.chat_items[-1].content if speech.chat_items else "No chat items")
     # 🧠 Step 2: wait OR get interrupted
     await speech.wait_if_not_interrupted([])
 
