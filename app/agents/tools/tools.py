@@ -720,7 +720,7 @@ async def call_back(city: str,
         "hour": hour,
         "meridiem": meridiem,
         "city": city,
-        "contact_phone": ctx.session.userdata.phone,
+        "contact_phone": ctx.session.userdata.phone if ctx.session.userdata.phone else "test-call", #TODO QUERY - Feature for callback on different number? Misuse implications?
         "conversation_id": ctx.session.userdata.call_id,
         "agentId": ctx.session.userdata.agent_id,
         "current_utc_time": datetime.now(timezone.utc).strftime("%Y-%m-%dT%H:%M:%SZ")
