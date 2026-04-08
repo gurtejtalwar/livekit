@@ -718,7 +718,7 @@ async def call_back(city: str,
         "current_utc_time": datetime.now(timezone.utc).strftime("%Y-%m-%dT%H:%M:%SZ")
     }
 
-    return await api.post("/voice-callback", payload)
+    return await n3_api.post("/voice-callback", payload)
 
 @tool("do_not_call")
 async def do_not_call(reason: str,
