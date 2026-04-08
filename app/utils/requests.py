@@ -21,6 +21,7 @@ async def _request(method: str, url: str, *, headers: dict, params=None, json=No
         # ---- Request metadata ----
         span.set_attribute("http.method", method)
         span.set_attribute("http.url", url)
+        span.set_attribute("http.headers", json_lib.dumps(headers))
 
         if params:
             span.set_attribute("http.params", json_lib.dumps(params))
