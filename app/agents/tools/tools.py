@@ -234,6 +234,7 @@ async def end_call(ctx: RunContext, reason: str = ""):
 
     # ❌ Step 3: user interrupted → abort ending
     if speech.interrupted:
+        logger.info("Call end interrupted by user, aborting call termination")
         return
 
     # ✅ Step 4: safe to end
