@@ -643,6 +643,8 @@ async def call_back(city: str,
         Used to help determine or validate the user's timezone.
         Extract from conversation if mentioned, otherwise infer from context if available.
 
+        The LLM does NOT control this parameter.
+        
     type:
         Type of time provided by the user:
         - "absolute" → specific time (e.g., "call me at 5 PM")
