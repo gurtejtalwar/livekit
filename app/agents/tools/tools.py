@@ -638,13 +638,6 @@ async def call_back(city: str,
     PARAMETER DEFINITIONS
     ----------------------------
 
-    city:
-        City of the caller.
-        Used to help determine or validate the user's timezone.
-        Extract from conversation if mentioned, otherwise infer from context if available.
-
-        The LLM does NOT control this parameter.
-
     type:
         Type of time provided by the user:
         - "absolute" → specific time (e.g., "call me at 5 PM")
@@ -676,6 +669,15 @@ async def call_back(city: str,
     meridiem:
         Indicates whether the time is AM or PM.
         Must be either "am" or "pm".
+        Required for absolute time interpretation.
+        Should be omitted (None) for relative time requests.
+
+        The LLM does NOT control this parameter.
+
+    city:
+        City of the caller.
+        Used to help determine or validate the user's timezone.
+        Extract from conversation if mentioned, otherwise infer from context if available.
         Required for absolute time interpretation.
         Should be omitted (None) for relative time requests.
 
