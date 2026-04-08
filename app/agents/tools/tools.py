@@ -243,6 +243,8 @@ async def end_call(ctx: RunContext, reason: str = ""):
         await job_ctx.api.room.delete_room(
             api.DeleteRoomRequest(room=job_ctx.room.name)
         )
+    else:
+        logger.error("No job context available to end call")
 
 @tool("detected_voicemail")
 async def detected_voicemail(ctx: RunContext, dummy: str=""):
