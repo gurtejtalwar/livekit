@@ -705,6 +705,14 @@ async def call_back(city: str,
         - Inform the user the request cannot be completed right now
         - Offer a fallback (manual follow-up or retry later)
     """
+    if type == "absolute":
+        if hour is None or meridiem is None:
+            raise ValueError("Invalid absolute time")
+
+    if type == "relative":
+        if value is None or unit is None:
+            raise ValueError("Invalid relative time")
+        
     payload = {
         "type": type,
         "value": value,
