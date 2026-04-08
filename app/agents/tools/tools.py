@@ -19,12 +19,57 @@ from livekit.agents import llm, get_job_context, RunContext
 
 from app.utils.timer import Timer
 from app.shared.settings import get_settings
-from app.utils.requests import _request
+from app.utils.requests import _request, APIClient
 from app.agents.workflows import WarmTransferTask
 
 load_dotenv(override=True)
 settings = get_settings()
 logger = logging.getLogger("TOOLS")
+
+from opentelemetry import trace
+import json as json_lib
+
+tracer = trace.get_tracer(__name__)
+
+class ToolExecutor:
+    @staticmethod
+    async def run(tool_name: str, fn, *, args: dict):
+        span = trace.get_current_span()
+
+        span.update_name(tool_name)
+
+        span.set_attribute("tool.name", tool_name)
+        span.set_attribute("tool.args", json_lib.dumps(args))
+
+        try:
+            result = await fn()
+
+            span.set_attribute(
+                "tool.response",
+                json_lib.dumps(result)[:2000]
+            )
+            span.set_attribute("tool.status", "success")
+
+            return result
+
+        except Exception as e:
+            span.set_attribute("tool.status", "error")
+            span.set_attribute("tool.error", str(e))
+            raise
+def tool(name: str):
+    def decorator(fn):
+        @llm.function_tool
+        async def wrapper(*args, **kwargs):
+            return await ToolExecutor.run(
+                name,
+                lambda: fn(*args, **kwargs),
+                args=kwargs
+            )
+        return wrapper
+    return decorator
+
+n3_api = APIClient(settings.N3_ISC_URL, settings.N3_ISC_API_KEY)
+n1_api = APIClient(settings.N1_ISC_URL, settings.N1_ISC_API_KEY)
 
 class KnowledgeBase:
     def __init__(self, index, chunks):
@@ -90,7 +135,7 @@ def load_knowledge_base(resource_centre_id: str) -> KnowledgeBase:
 
 def make_ask_knowledge_base_tool(kb: KnowledgeBase):
 
-    @llm.function_tool
+    @tool("ask_knowledge_base")
     async def ask_knowledge_base(question: str):
         with Timer("KB Tool Total"):
             with Timer("Embed Query"):
@@ -134,7 +179,7 @@ with Timer("Load Embedding Model"):
         MODEL_CACHE[model]=True
 
 
-@llm.function_tool
+@tool("get_current_time")
 async def get_current_time(input: str) -> str:
     """Get the current time."""
     from datetime import datetime
@@ -147,7 +192,7 @@ async def hangup_call(ctx: RunContext):
         api.DeleteRoomRequest(room=ctx.room.name)
     )
 
-@llm.function_tool
+@tool("end_call")
 async def end_call(ctx: RunContext, reason: str = ""):
     """
     Gracefully terminates the ongoing voice call/session.
@@ -194,7 +239,7 @@ async def end_call(ctx: RunContext, reason: str = ""):
             api.DeleteRoomRequest(room=job_ctx.room.name)
         )
 
-@llm.function_tool
+@tool("detected_voicemail")
 async def detected_voicemail(ctx: RunContext, dummy: str=""):
     """Call this tool if you have detected a voicemail system, AFTER hearing the voicemail greeting"""
     await ctx.session.generate_reply(
@@ -211,7 +256,7 @@ class CustomField(BaseModel):
     value: str
 
 #/ -- Book Appointment Tool --/
-@llm.function_tool
+@tool("book_appointment")
 async def book_appointment(
     name: str,
     date: str,
@@ -224,10 +269,6 @@ async def book_appointment(
     Called only when the user confirms the date and time for booking a new appointment.
     Do not call this tool without confirming with the user first. 
     """
-    headers = {
-    "x-agent-secret": settings.N1_ISC_API_KEY,
-    "Content-Type": "application/json"
-    }
     payload = {
         "conversation_id": ctx.session.userdata.call_id,
         "caller_name": name,
@@ -237,15 +278,10 @@ async def book_appointment(
         "customFields": customFields or {}
     }
 
-    return await _request(
-        "POST",
-        f"{settings.N3_ISC_URL}/book-appointment",
-        headers=headers,
-        json=payload
-    )
+    return await n3_api.post("/book-appointment", payload)
 
 #/ -- Cancel Appointment Tool --/
-@llm.function_tool
+@tool("cancel_appointment")
 async def cancel_appointment(booking_id: str):
     """
     Cancel an existing appointment using booking ID.
@@ -255,15 +291,12 @@ async def cancel_appointment(booking_id: str):
     "Content-Type": "application/json"
     }
 
-    return await _request(
-        "DELETE",
-        f"{settings.N3_ISC_URL}/book-appointment",
-        headers=headers,
-        params={"booking_id": booking_id}
-    )
-
+    return await n3_api.delete("/book-appointment", 
+                               params={"booking_id": booking_id}
+                               )
+                               
 #/ -- Get Available Slots Tool --/
-@llm.function_tool
+@tool("get_available_slots")
 async def get_available_slots(
     city: str,
     ctx: RunContext,
@@ -271,22 +304,13 @@ async def get_available_slots(
     """
     Get available appointment slots for a given agent and date.
     """
-    headers = {
-    "x-agent-secret": settings.N1_ISC_API_KEY,
-    "Content-Type": "application/json"
+    params={
+        "city": city,
+        "contact_phone": ctx.session.userdata.phone,
+        "timezoneName": "Asia/Calcutta", #TODO HAZARD
     }
-    result = await _request(
-        "GET",
-        f"{settings.N1_ISC_URL}/timeslot/get-voicebot-slots/{ctx.session.userdata.admin_id}",
-        headers=headers,
-        params={
-            "city": city,
-            "contact_phone": ctx.session.userdata.phone,
-            "timezoneName": "Asia/Calcutta", #TODO HAZARD
-        }
-    )
-    print("Available slots result:\n", result)
-    return result
+    return await n1_api.get(f"/timeslot/get-voicebot-slots/{ctx.session.userdata.admin_id}", params=params)
+
 
 async def get_available_slots_DEPRECATED(
     agentId: str,
@@ -314,7 +338,7 @@ async def get_available_slots_DEPRECATED(
     return result
 
 #/ -- Reschedule Appointment Tool --/
-@llm.function_tool
+@tool("reschedule_appointment")
 async def reschedule_appointment(
     booking_id: str,
     time: str,
@@ -324,10 +348,6 @@ async def reschedule_appointment(
     """
     Reschedule an existing appointment.
     """
-    headers = {
-    "x-agent-secret": settings.N1_ISC_API_KEY,
-    "Content-Type": "application/json"
-    }
     payload = {
         "booking_id": booking_id,
         "contact_phone": ctx.session.userdata.phone, #TODO QUERY - Feature for callback on different number? Misuse implications?,
@@ -336,15 +356,10 @@ async def reschedule_appointment(
         # "customFields": customFields or {}
     }
 
-    return await _request(
-        "PATCH",
-        f"{settings.N3_ISC_URL}/book-appointment",
-        headers=headers,
-        json=payload
-    )
+    return await n3_api.patch("/book-appointment", payload)
 
 #/ -- Create CRM Lead Tool --/
-@llm.function_tool
+@tool("create_crm_lead")
 async def create_crm_lead(
     first_name: str,
     email: str,
@@ -367,14 +382,9 @@ async def create_crm_lead(
         "company": company,
         "adminId": admin_id,
     }
+    return n1_api.post("/api/crm/external/lead-create", payload)
 
-    return await _request(
-        method="POST",
-        url=f"{settings.N1_ISC_URL}/api/crm/external/lead-create",
-        headers=headers,
-        json=payload,
-    )
-@llm.function_tool
+@tool("customer_support")
 async def customer_support(
     caller_name: str,
     contact_email: str,
@@ -438,11 +448,6 @@ async def customer_support(
         - Inform the user the request cannot be completed right now
         - Offer a fallback (manual follow-up or retry later)
     """
-    headers = {
-    "x-agent-secret": settings.N1_ISC_API_KEY,
-    "Content-Type": "application/json"
-    }
-
     payload = {
         "caller_name": caller_name,
         "contact_email": contact_email,
@@ -453,14 +458,9 @@ async def customer_support(
         "agentId": ctx.session.userdata.agent_id,
     }
 
-    return await _request(
-        method="POST",
-        headers=headers,
-        url=f"{settings.N3_ISC_URL}/customer-ticket/create",
-        json=payload,
-    )
+    return await n3_api.post("/customer-ticket/create", payload)
 
-@llm.function_tool
+@tool("sales_lead_generation")
 async def sales_lead_generation(
     name: str,
     email: str,
@@ -517,12 +517,6 @@ async def sales_lead_generation(
         - Inform the user the request cannot be completed right now
         - Offer a fallback (manual follow-up or retry later)
     """
-
-    headers = {
-        "x-agent-secret": settings.N1_ISC_API_KEY,
-        "Content-Type": "application/json"
-    }
-
     payload = {
         "name": name,
         "email": email,
@@ -532,15 +526,10 @@ async def sales_lead_generation(
         "adminId": ctx.session.userdata.admin_id,
     }
 
-    return await _request(
-        method="POST",
-        headers=headers,
-        url=f"{settings.N3_ISC_URL}/api/lead/voicebot/lead-create",
-        json=payload,
-    )
+    return await n3_api.post("/api/lead/voicebot/lead-create", payload)
 
 
-@llm.function_tool()
+@tool("feedback_review_collection")
 async def feedback_review_collection(
     rating: int,
     ctx: RunContext,
@@ -586,11 +575,6 @@ async def feedback_review_collection(
         - Offer a fallback (manual follow-up or retry later)
     """
 
-    headers = {
-        "x-agent-secret": settings.N1_ISC_API_KEY,
-        "Content-Type": "application/json"
-    }
-
     payload = {
         "rating": rating,
         "contact_phone": ctx.session.userdata.phone,
@@ -598,14 +582,10 @@ async def feedback_review_collection(
         "agentId": ctx.session.userdata.agent_id,
     }
 
-    return await _request(
-        method="POST",
-        headers=headers,
-        url=f"{settings.N3_ISC_URL}/service-feedback",
-        json=payload,
-    )
+    return await n3_api.post("/service-feedback", payload)
 
-@llm.function_tool()
+
+@tool("information_faq_mode")
 async def information_faq_mode(dummy: str): 
     pass
 
@@ -621,7 +601,7 @@ WHY they contacted you (goal, problem, request)
 WHY a human agent is requested or needed at this point
 Brief summary in 100-200 characters from a first-person perspective"""
 
-@llm.function_tool
+@tool("call_back")
 async def call_back(city: str,
                     type: Literal["absolute", "relative"],
                     meridiem: Literal["am", "pm"],
@@ -720,9 +700,6 @@ async def call_back(city: str,
         - Inform the user the request cannot be completed right now
         - Offer a fallback (manual follow-up or retry later)
     """
-    headers = {
-    "x-agent-secret": settings.N1_ISC_API_KEY,
-    }
     payload = {
         "type": type,
         "value": value,
@@ -730,19 +707,15 @@ async def call_back(city: str,
         "hour": hour,
         "meridiem": meridiem,
         "city": city,
-        "contact_phone": ctx.session.userdata.phone, #TODO QUERY - Feature for callback on different number? Misuse implications?,
+        "contact_phone": ctx.session.userdata.phone,
         "conversation_id": ctx.session.userdata.call_id,
         "agentId": ctx.session.userdata.agent_id,
-        "current_utc_time":  datetime.now(timezone.utc).strftime("%Y-%m-%dT%H:%M:%SZ")
+        "current_utc_time": datetime.now(timezone.utc).strftime("%Y-%m-%dT%H:%M:%SZ")
     }
-    return await _request(
-        "POST",
-        f"{settings.N3_ISC_URL}/voice-callback",
-        headers=headers,
-        json=payload
-    )
 
-@llm.function_tool
+    return await api.post("/voice-callback", payload)
+
+@tool("do_not_call")
 async def do_not_call(reason: str,
                       ctx: RunContext):
     """Use this tool to mark that the user should not be called back. Only use this tool if the user has explicitly stated that they do not want a callback, or if you have been instructed to do so by the user. Do not use this tool for any other reason.
@@ -762,7 +735,7 @@ async def do_not_call(reason: str,
         headers=headers,
         json=payload
     )
-@llm.function_tool
+@tool("transfer_to_human")
 async def transfer_to_human(outbound_trunk: str, ctx: RunContext) -> None:
     """Called when the user asks to speak to a human agent. This will put the user on
         hold while the supervisor is connected.

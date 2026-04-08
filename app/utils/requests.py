@@ -66,3 +66,35 @@ async def _request(method: str, url: str, *, headers: dict, params=None, json=No
             span.set_status(Status(StatusCode.ERROR))
 
             raise
+
+class APIClient:
+    def __init__(self, base_url: str, api_key: str):
+        self.base_url = base_url
+        self.headers = {
+            "x-agent-secret": api_key,
+            "Content-Type": "application/json"
+        }
+
+    async def post(self, path: str, payload: dict):
+        return await _request(
+            "POST",
+            f"{self.base_url}{path}",
+            headers=self.headers,
+            json=payload
+        )
+
+    async def get(self, path: str, params: dict):
+        return await _request(
+            "GET",
+            f"{self.base_url}{path}",
+            headers=self.headers,
+            params=params
+        )
+
+    async def delete(self, path: str, params: dict):
+        return await _request(
+            "DELETE",
+            f"{self.base_url}{path}",
+            headers=self.headers,
+            params=params
+        )
