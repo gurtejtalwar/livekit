@@ -186,7 +186,7 @@ async def end_call(ctx: RunContext, reason: str = ""):
     # ✅ Step 4: safe to end
     job_ctx = get_job_context()
     if job_ctx:
-        await session.close()
+        await session.aclose()
         await job_ctx.api.room.delete_room(
             api.DeleteRoomRequest(room=job_ctx.room.name)
         )
@@ -644,7 +644,7 @@ async def call_back(city: str,
         Extract from conversation if mentioned, otherwise infer from context if available.
 
         The LLM does NOT control this parameter.
-        
+
     type:
         Type of time provided by the user:
         - "absolute" → specific time (e.g., "call me at 5 PM")
