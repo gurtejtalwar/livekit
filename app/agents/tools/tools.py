@@ -149,7 +149,26 @@ async def hangup_call(ctx: RunContext):
 
 @llm.function_tool
 async def end_call(ctx: RunContext, reason: str = ""):
+    """
+    Gracefully terminates the ongoing voice call/session.
 
+    This tool is invoked by the agent when it determines that the conversation
+    has reached a natural conclusion or when a specific condition requires
+    ending the call (e.g., user request, task completion, escalation, etc.).
+    
+    Args:
+        reason (str, optional): A short description of why the call is being
+            ended (e.g., "user requested", "task completed", "no response").
+            Defaults to an empty string.
+
+    Usage Guidelines (for LLM):
+    - Only call this function when the conversation is clearly complete.
+    - Do NOT call this function on partial acknowledgements (e.g., "thanks").
+    - Prefer confirming with the user before ending the call unless explicitly requested.
+
+    Returns:
+        None
+    """
     session = ctx.session
 
     # 🗣️ Step 1: speak
@@ -167,6 +186,7 @@ async def end_call(ctx: RunContext, reason: str = ""):
     # ✅ Step 4: safe to end
     job_ctx = get_job_context()
     if job_ctx:
+        await session.close()
         await job_ctx.api.room.delete_room(
             api.DeleteRoomRequest(room=job_ctx.room.name)
         )
