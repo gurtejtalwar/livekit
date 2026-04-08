@@ -650,11 +650,6 @@ async def call_back(city: str,
 
         Choose based on how the user expresses the callback time.
 
-    meridiem:
-        Indicates whether the time is AM or PM.
-        Must be either "am" or "pm".
-        Required for absolute time interpretation.
-
     value:
         Value of time for callback
         Required ONLY when type = "relative".
@@ -676,6 +671,13 @@ async def call_back(city: str,
 
         The LLM does NOT control this parameter.
 
+    meridiem:
+        Indicates whether the time is AM or PM.
+        Must be either "am" or "pm".
+        Required for absolute time interpretation.
+        Should be omitted (None) for relative time requests.
+
+        The LLM does NOT control this parameter.
     ----------------------------
     EXECUTION RULES
     ----------------------------
