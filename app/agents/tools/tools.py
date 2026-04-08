@@ -7,6 +7,7 @@ import logging
 import gc
 
 import time
+from functools import wraps
 from datetime import datetime, timezone
 from dotenv import load_dotenv
 from typing import Optional, List, Literal
@@ -56,15 +57,19 @@ class ToolExecutor:
             span.set_attribute("tool.status", "error")
             span.set_attribute("tool.error", str(e))
             raise
+
 def tool(name: str):
     def decorator(fn):
         @llm.function_tool
+        @wraps(fn)
         async def wrapper(*args, **kwargs):
             return await ToolExecutor.run(
                 name,
                 lambda: fn(*args, **kwargs),
                 args=kwargs
             )
+
+        wrapper.__name__ = name  # extra safety
         return wrapper
     return decorator
 
