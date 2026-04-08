@@ -172,7 +172,7 @@ model = "test"
 with Timer("Load Embedding Model"):
 
     if model not in MODEL_CACHE:
-        tokenizer = AutoTokenizer.from_pretrained("sentence-transformers/all-MiniLM-L6-v2")
+        tokenizer = AutoTokenizer.from_pretrained("sentence-transformers/all-MiniLM-L6-v2", local_files_only=True)
         model = ORTModelForFeatureExtraction.from_pretrained(
             "sentence-transformers/all-MiniLM-L6-v2",
         )
