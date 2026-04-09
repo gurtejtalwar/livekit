@@ -8,6 +8,7 @@ async def update_lead_profile(
     last_name: str | None,
     phone: str | None,
     email: str | None,
+    metadata: dict | None,
     # agent_summary: str | None,
     ctx: RunContext,
 ):
@@ -48,6 +49,15 @@ async def update_lead_profile(
         Extract only if explicitly stated.
         Do NOT infer.
 
+    metadata:
+        Additional contextual information about the lead.
+        Can include:
+        - company name
+        - job title
+        - industry
+        - any other relevant details
+        Do NOT infer or fabricate metadata. Only include if explicitly mentioned.
+        
     agent_summary:
         Short summary of the current conversation.
         Include:
@@ -83,6 +93,7 @@ async def update_lead_profile(
             first_name=first_name,
             last_name=last_name,
             email=email,
+            metadata=metadata,
             # agent_summary=agent_summary, #TODO Save from external API
         )
     except Exception:

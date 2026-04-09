@@ -272,6 +272,7 @@ class VoiceCallLeads(Document):
 
     agents_summary = EmbeddedDocumentListField(LeadsSummary)
     overall_summary = StringField()
+    metadata = DictField()
 
 async def on_call_ended(
     session: AgentSession,
@@ -560,6 +561,7 @@ async def upsert_voice_call_lead(
     first_name: str | None = None,
     last_name: str | None = None,
     email: str | None = None,
+    metadata: dict | None = None,
     agent_summary: str | None = None,
     overall_summary: str | None = None,
 ):
@@ -591,6 +593,12 @@ async def upsert_voice_call_lead(
     if phone:
         lead.phone = phone
 
+    if metadata:
+        if lead.metadata:
+            lead.metadata.update(metadata)  # merge with existing
+        else:
+            lead.metadata = metadata
+            
     # ---- Agent-specific summary ----
     if agent_summary:
         existing = next(
