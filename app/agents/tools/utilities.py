@@ -18,9 +18,9 @@ async def update_lead_profile(
     last_name: str | None,
     phone: str | None,
     email: str | None,
-    metadata: MetadataModel | None,
     # agent_summary: str | None,
     ctx: RunContext,
+    metadata: MetadataModel = None,
 ):
     """
     Silently update or enrich lead information in the background.
