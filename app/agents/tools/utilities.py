@@ -1,14 +1,16 @@
-from livekit.agents import llm, RunContext
+from typing import Any, Dict
+from livekit.agents import RunContext
 
 from app.models.call_models import upsert_voice_call_lead
+from app.agents.tools.tools import tool
 
-@llm.function_tool
+@tool
 async def update_lead_profile(
     first_name: str | None,
     last_name: str | None,
     phone: str | None,
     email: str | None,
-    metadata: dict | None,
+    metadata: Dict[str, Any] | None,
     # agent_summary: str | None,
     ctx: RunContext,
 ):
@@ -57,7 +59,7 @@ async def update_lead_profile(
         - industry
         - any other relevant details
         Do NOT infer or fabricate metadata. Only include if explicitly mentioned.
-        
+
     agent_summary:
         Short summary of the current conversation.
         Include:
