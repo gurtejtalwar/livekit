@@ -1,4 +1,5 @@
-from typing import Any, Dict
+from typing import Any, Dict, Annotated
+from pydantic import Field
 from livekit.agents import RunContext
 
 from app.models.call_models import upsert_voice_call_lead
@@ -10,7 +11,10 @@ async def update_lead_profile(
     last_name: str | None,
     phone: str | None,
     email: str | None,
-    metadata: Dict[str, Any] | None,
+    metadata: Annotated[
+        Dict[str, Any] | None,
+        Field(default=None, json_schema_extra={"additionalProperties": True})
+    ],
     # agent_summary: str | None,
     ctx: RunContext,
 ):
