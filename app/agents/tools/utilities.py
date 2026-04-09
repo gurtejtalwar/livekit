@@ -1,9 +1,16 @@
-from typing import Any, Dict, Annotated
-from pydantic import Field
+from pydantic import BaseModel, ConfigDict
 from livekit.agents import RunContext
 
 from app.models.call_models import upsert_voice_call_lead
 from app.agents.tools.tools import tool
+
+class MetadataModel(BaseModel):
+    model_config = ConfigDict(extra="allow")  
+    # 👆 THIS is what forces: additionalProperties: true
+
+    # optional: define known fields
+    # source: str | None = None
+
 
 @tool("update_lead_profile")
 async def update_lead_profile(
@@ -11,10 +18,7 @@ async def update_lead_profile(
     last_name: str | None,
     phone: str | None,
     email: str | None,
-    metadata: Annotated[
-        Dict[str, Any] | None,
-        Field(default=None, json_schema_extra={"additionalProperties": True})
-    ],
+    metadata: MetadataModel | None,
     # agent_summary: str | None,
     ctx: RunContext,
 ):
