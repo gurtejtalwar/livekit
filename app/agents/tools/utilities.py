@@ -4,7 +4,7 @@ from livekit.agents import RunContext
 from app.models.call_models import upsert_voice_call_lead
 from app.agents.tools.tools import tool
 
-@tool
+@tool("update_lead_profile")
 async def update_lead_profile(
     first_name: str | None,
     last_name: str | None,
