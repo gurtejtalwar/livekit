@@ -20,7 +20,7 @@ async def update_lead_profile(
     email: str | None,
     # agent_summary: str | None,
     ctx: RunContext,
-    metadata: MetadataModel = None,
+    # metadata: MetadataModel = None,
 ):
     """
     Silently update or enrich lead information in the background.
@@ -103,7 +103,7 @@ async def update_lead_profile(
             first_name=first_name,
             last_name=last_name,
             email=email,
-            metadata=metadata,
+            # metadata=metadata,
             # agent_summary=agent_summary, #TODO Save from external API
         )
     except Exception:
