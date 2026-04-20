@@ -445,34 +445,35 @@ async def save_usage_summary(call_id: str, summary: UsageSummary):
     try:
         call_details: VoiceCallDetails = VoiceCallDetails.objects.get(call_id=call_id)
     except DoesNotExist:
-        logger.warning(f"CallDetails not found for call_id {call_id} when saving usage summary")
+        logger.warning(f"Call Details not found for call_id {call_id} when saving usage summary")
         return
+    try:
+        call_details.lk_metadata.usage = UsageSummaryEmbedded(
+            llm_prompt_tokens=summary.llm_prompt_tokens,
+            llm_prompt_cached_tokens=summary.llm_prompt_cached_tokens,
 
-    call_details.lk_metadata.usage = UsageSummaryEmbedded(
-        llm_prompt_tokens=summary.llm_prompt_tokens,
-        llm_prompt_cached_tokens=summary.llm_prompt_cached_tokens,
+            llm_input_audio_tokens=summary.llm_input_audio_tokens,
+            llm_input_cached_audio_tokens=summary.llm_input_cached_audio_tokens,
 
-        llm_input_audio_tokens=summary.llm_input_audio_tokens,
-        llm_input_cached_audio_tokens=summary.llm_input_cached_audio_tokens,
+            llm_input_text_tokens=summary.llm_input_text_tokens,
+            llm_input_cached_text_tokens=summary.llm_input_cached_text_tokens,
 
-        llm_input_text_tokens=summary.llm_input_text_tokens,
-        llm_input_cached_text_tokens=summary.llm_input_cached_text_tokens,
+            llm_input_image_tokens=summary.llm_input_image_tokens,
+            llm_input_cached_image_tokens=summary.llm_input_cached_image_tokens,
 
-        llm_input_image_tokens=summary.llm_input_image_tokens,
-        llm_input_cached_image_tokens=summary.llm_input_cached_image_tokens,
+            llm_completion_tokens=summary.llm_completion_tokens,
 
-        llm_completion_tokens=summary.llm_completion_tokens,
+            llm_output_audio_tokens=summary.llm_output_audio_tokens,
+            llm_output_image_tokens=summary.llm_output_image_tokens,
+            llm_output_text_tokens=summary.llm_output_text_tokens,
 
-        llm_output_audio_tokens=summary.llm_output_audio_tokens,
-        llm_output_image_tokens=summary.llm_output_image_tokens,
-        llm_output_text_tokens=summary.llm_output_text_tokens,
-
-        tts_characters_count=summary.tts_characters_count,
-        tts_audio_duration=summary.tts_audio_duration,
-        stt_audio_duration=summary.stt_audio_duration,
-    )
-
-    call_details.save()
+            tts_characters_count=summary.tts_characters_count,
+            tts_audio_duration=summary.tts_audio_duration,
+            stt_audio_duration=summary.stt_audio_duration,
+        )
+        call_details.save()
+    except Exception as e:
+        logger.error("Error saving usage summary:\n %s", e)
 
 async def save_analysis(call_id: str, analysis: schemas.PostCallAnalysis):
     try:
