@@ -171,7 +171,7 @@ async def inbound_entrypoint(ctx: JobContext):
 
     async def log_usage():
         summary = usage_collector.get_summary()
-        logger.info(f"Usage: {summary}")
+        logger.info(f"Usage: \n{summary}")
         await call_models.save_usage_summary(session.userdata.call_id, summary)
 
     ctx.add_shutdown_callback(post_call_tasks)
@@ -193,15 +193,21 @@ async def post_call_analysis(session: AgentSession):
     analysis = schemas.PostCallAnalysis(**res["data"])
     logger.info(f"Post-call analysis: {analysis}")
     await call_models.save_analysis(session.userdata.call_id, analysis)
+    await call_models.upsert_voice_call_lead(user_id=session.userdata.user_id, 
+                                             admin_id=session.userdata.admin_id, 
+                                             agent_id=session.userdata.agent_id,
+                                             phone=session.userdata.phone,
+                                             agent_summary=analysis.summary,
+                                             )
 
 
 async def session_timeout_monitor(ctx: JobContext, timeout: int):
     await asyncio.sleep(timeout)
-    print(f"Hard timeout reached ({timeout}s). Shutting down.")
+    logger.warning(f"Hard timeout reached ({timeout}s). Shutting down.")
     
     # You can play a "Goodbye" TTS here if you have a reference to the session
     # then kill the job.
-    ctx.shutdown()
+    ctx.shutdown(reason="Hard timeout Reached!")
 
 #TODO REDUNDANT
 async def update_sip_context(ctx: JobContext, 
