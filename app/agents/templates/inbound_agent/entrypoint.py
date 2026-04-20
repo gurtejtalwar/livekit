@@ -49,17 +49,22 @@ async def inbound_entrypoint(ctx: JobContext):
     setup_langfuse()  # Call this at the start of the session to ensure telemetry is set up
     inactivity_task: asyncio.Task | None = None
     egress_info=None
-    # @session.on("metrics_collected")
-    # def _on_metrics_collected(ev: MetricsCollectedEvent):
-    #     usage_collector.collect(ev.metrics)
+    @session.on("metrics_collected")
+    def _on_metrics_collected(ev: MetricsCollectedEvent):
+        usage_collector.collect(ev.metrics)
         
-    #     metrics_handlers = {
-    #         "stt_metrics": agent_metrics.print_stt_metrics,
-    #         "llm_metrics": agent_metrics.print_llm_metrics,
-    #         "tts_metrics": agent_metrics.print_tts_metrics,
-    #         "vad_metrics": agent_metrics.print_vad_metrics,
-    #         "eou_metrics": agent_metrics.print_eou_metrics,
-    #     }
+        # metrics_handlers = {
+        #     "stt_metrics": agent_metrics.print_stt_metrics,
+        #     "llm_metrics": agent_metrics.print_llm_metrics,
+        #     "tts_metrics": agent_metrics.print_tts_metrics,
+        #     "vad_metrics": agent_metrics.print_vad_metrics,
+        #     "eou_metrics": agent_metrics.print_eou_metrics,
+        # }
+        
+        # handler = metrics_handlers.get(ev.metrics.type)
+        # if handler:
+        #     handler(ev.metrics)
+
     # @session.on("user_state_changed")
     # def _user_state_changed(ev: UserStateChangedEvent):
     #     return None
@@ -72,10 +77,6 @@ async def inbound_entrypoint(ctx: JobContext):
     #     if ev.new_state=="speaking" and inactivity_task is not None:
     #         inactivity_task.cancel()
 
-        
-    #     handler = metrics_handlers.get(ev.metrics.type)
-    #     if handler:
-    #         handler(ev.metrics)
     
     async def wait_for_egress():
         for _ in range(10): # Try for 30 seconds
