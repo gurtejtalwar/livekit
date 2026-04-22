@@ -10,7 +10,8 @@ from livekit.plugins import deepgram, cartesia, groq, openai, elevenlabs, assemb
 from livekit.plugins.turn_detector.english import EnglishModel
 from livekit.plugins.turn_detector.multilingual import MultilingualModel
 
-from app.agents import AgentConfig, UserData
+from app.agents.prompt.builder import PromptBuilder
+from app.agents import AgentConfig, LeadContext
 from app.agents.prompt import inbound as inbound_prompt
 from app.agents.tools import resolve_tools
 from app.models import call_models
@@ -155,20 +156,31 @@ class InboundAgent(Agent):
     async def switch_to_hindi(self, reason: str):
         """Switch to speaking Hindi"""
         await self._switch_language("hi")  
+
 class AgentFactory:
     @staticmethod
-    async def get_user_data(agent_id: str, user_phone_number: str = "") -> UserData:
-        return await helper.get_user_data(agent_id, user_phone_number)    
+    async def get_lead_context(agent_id: str, user_id: str, user_phone_number: str = "") -> LeadContext:
+        lead_data = await helper.get_lead_data(user_id, user_phone_number)
+        summary = await helper.get_lead_agent_and_overall_summary(agent_id=agent_id, user_id=user_id, phone_number=user_phone_number)
+        
+        return LeadContext(data=lead_data, summary=summary)
+    
+    @staticmethod
+    async def load_agent_config(agent_id: str) -> AgentConfig:
+        return await helper.load_agent_runtime_config(agent_id)    
 
     @staticmethod
-    async def load_agent_config(user_data, agent_id: str) -> AgentConfig:
-        return await helper.load_agent_runtime_config(agent_id, user_data)    
-
-    @staticmethod
-    def from_config(cfg: AgentConfig) -> InboundAgent:
+    def from_config(cfg: AgentConfig,
+                    lead_ctx: LeadContext) -> InboundAgent:
         cfg.lk_plugins.lk_stt = factory.STT.create(cfg)
         cfg.lk_plugins.lk_llm = factory.LLM.create(cfg)
         cfg.lk_plugins.lk_tts = factory.TTS.create(cfg)
+        instructions = PromptBuilder(
+            config=cfg,
+            lead=lead_ctx,
+            call_type=cfg.call_type
+        ).build()
+        cfg.system_prompt = instructions
         return InboundAgent(config=cfg)
 
     @staticmethod

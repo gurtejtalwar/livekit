@@ -4,7 +4,9 @@ from functools import cache
 from pydantic_settings import BaseSettings, SettingsConfigDict, PydanticBaseSettingsSource
 
 class DevSettings(BaseSettings):
-    SIP_EXCLUDED_CALL_TYPES: str = "test-inbound"
+    SIP_EXCLUDED_CALL_TYPES: list = ["test-inbound",
+                                     "test-widget",
+                                     "widget"]
     LK_AGENT_INIT_TIMEOUT: float = 30.0
     LK_AGENT_SHUTDOWN_TIMEOUT: float = 20.0
 

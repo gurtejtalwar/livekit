@@ -3,30 +3,35 @@ import logging
 from app.shared import models
 from app import agents
 from app.agents.prompt import inbound
-from app.agents import UserData
-from app.models.call_models import get_lead_by_phone
+from app.agents import LeadData, LeadSummary
+from app.models.call_models import get_lead_by_phone, get_summary_by_phone_number
 
 logger = logging.getLogger(__name__)
 
-async def get_user_data(user_id: str, phone_number: str): #TODO HAZARD
+async def get_lead_data(user_id: str, phone_number: str) -> LeadData: #TODO HAZARD
     lead = await get_lead_by_phone(phone_number, user_id)
 
     if lead is not None:
-        return UserData(
+        return LeadData(
             user_id=str(lead.user_id),
+            lead_id=str(lead.id),
             name=lead.first_name,
             email=lead.email,
             phone=lead.phone
         )
     else:
-        return UserData(
+        return LeadData(
             user_id=None,
             name=None,
             email=None,
             phone=phone_number
         )
 
-async def load_agent_runtime_config(agent_id: str, user_data: UserData):
+async def get_lead_agent_and_overall_summary(agent_id: str, user_id: str, phone_number: str) -> LeadSummary: #TODO HAZARD
+    summary = await get_summary_by_phone_number(phone_number, user_id, agent_id)
+    return summary
+
+async def load_agent_runtime_config(agent_id: str):
     workflow_doc = None
     agent: models.VoiceAgent = models.VoiceAgent.objects(
         id=ObjectId(agent_id)).first()
@@ -54,7 +59,7 @@ async def load_agent_runtime_config(agent_id: str, user_data: UserData):
         team_member_id = escalation_doc.teamMembers[0]["_id"]
         voicebot_settings_doc: models.VoiceBotSettings = models.VoiceBotSettings.objects(userId=ObjectId(team_member_id)).first()
         human_phone_number = voicebot_settings_doc.phone_number
-    # ---------- SYSTEM PROMPT ----------
+    # ---------- SYSTEM PROMPT ---------- 
     system_prompt = (
         config_doc.systemPrompt
         if config_doc and config_doc.systemPrompt
@@ -62,24 +67,26 @@ async def load_agent_runtime_config(agent_id: str, user_data: UserData):
         if agent.agentConfig
         else ""
     )
-    system_prompt += (
-        f"\nUser Data: \n"
-        f"Caller Name: {user_data.name}\n "
-        f"Caller Email: {user_data.email}\n "
-        f"Caller Phone: {user_data.phone}\n"
-        f"Agent ID: {user_data.agent_id}\n"
-        f"Caller ID: {user_data.user_id}\n"
-        f"Caller Current Time: {user_data.user_current_time}\n"
-        f"Caller Timezone: {user_data.user_timezone}\n"
-    )
-    lk_prompt = inbound.lk_prompt.format(
-        agent_name=agent.agentName,
-        admin_goal=system_prompt,
-        language=voice_config_doc.language if voice_config_doc and voice_config_doc.language else "English",
-        additional_languages=", ".join(config_doc.additionalLanguages) if config_doc and config_doc.additionalLanguages else [],
-        time=get_time_in_timezone(config_doc.timezone),
-        timezone=config_doc.timezone
-    )
+    # system_prompt += (
+    #     f"\nUser Data: \n"
+    #     f"Caller Name: {lead_data.name}\n "
+    #     f"Caller Email: {lead_data.email}\n "
+    #     f"Caller Phone: {lead_data.phone}\n"
+    #     f"Agent ID: {lead_data.agent_id}\n"
+    #     f"Caller ID: {lead_data.user_id}\n"
+    #     f"Caller Current Time: {lead_data.user_current_time}\n"
+    #     f"Caller Timezone: {lead_data.user_timezone}\n"
+    # )
+    # lk_prompt = inbound.lk_prompt.format(
+    #     agent_name=agent.agentName,
+    #     admin_goal=system_prompt,
+    #     language=voice_config_doc.language if voice_config_doc and voice_config_doc.language else "English",
+    #     additional_languages=", ".join(config_doc.additionalLanguages) if config_doc and config_doc.additionalLanguages else [],
+    #     time=get_time_in_timezone(config_doc.timezone),
+    #     timezone=config_doc.timezone
+    # )
+    # ---------- SYSTEM PROMPT ---------- #TODO Move
+
     # ---------- LLM ----------
     llm = config_doc.llm if config_doc and config_doc.llm else {}
     llm_provider = llm.get("provider", "groq")
@@ -118,7 +125,7 @@ async def load_agent_runtime_config(agent_id: str, user_data: UserData):
         admin_id=str(agent.adminId),
         agent_name=agent.agentName,
         knowledge_base_id=identity_doc.resourceCentreId,
-        system_prompt=lk_prompt,
+        system_prompt=system_prompt,
         workflow_graph_json=workflow_doc.workflow_config if workflow_doc else None,
         models=agents.ModelConfig(
             stt=agents.STTConfig(

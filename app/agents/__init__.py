@@ -19,20 +19,33 @@ CARTESIA_VOLUME_MAP = {
     "high": 1.5,
 }
 
+@dataclass
+class LeadSummary:
+    agent_summary: str = ""
+    overall_summary: str = ""
+    last_call_summary: str = ""
 
 @dataclass
-class UserData:
-    user_id: str
+class LeadData:
     name: str
     email: str
-    phone: str = ""
+
+    user_id: str
+    lead_id: str = ""
     agent_id: str = ""
     admin_id: str = ""
+    phone: str = ""
+    
     user_timezone: str = ""
     user_current_time: str = ""
     call_id: str = None
     outbound_trunk_id: str = "" #TODO WRAP IN OBJECT
     human_escalation_phone: str = "" #TODO WRAP IN OBJECT
+
+@dataclass
+class LeadContext:
+    data: LeadData
+    summary: LeadSummary = field(default_factory=LeadSummary)
 
 class CallDetails(BaseModel):
     livekit_call_id: str
@@ -137,10 +150,11 @@ class AgentConfig(BaseModel):
     knowledge_base_id: Optional[str] = None
     workflow_graph_json: Optional[dict] = None
 
+    call_context: Optional[dict] = None 
     call_type: Literal["inbound", "outbound", "test-inbound", "test-outbound"] = None
     call_details: Optional[CallDetails] = None
 
-    system_prompt: str
+    system_prompt: str = ""
 
 
     language: Optional[str] = "English"

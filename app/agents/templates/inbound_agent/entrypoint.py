@@ -17,7 +17,7 @@ from livekit.agents import (metrics,
                             MetricsCollectedEvent,
                             RoomInputOptions)
 
-from app.agents import agent_metrics, UserData, AgentConfig, CallDetails
+from app.agents import LeadContext, LeadData, AgentConfig, CallDetails
 from app.agents.factory.agent import AgentFactory
 from app.models import call_models
 from app.shared import schemas
@@ -89,30 +89,38 @@ async def inbound_entrypoint(ctx: JobContext):
     # Example: resolve from headers / room metadata / API
     metadata = json.loads(ctx.job.metadata)
     agent_id = metadata["agent_id"]
+    user_id = metadata["user_id"] 
+    
+    call_type = metadata["call_type"]
 
-    print("*"*10,"\n")
     print(f"Received Agent Metadata:\n {metadata}\n")
-    print("*"*10,"\n")
-    print(f"Starting session with agent_id: {agent_id}")
 
-    user_data = await AgentFactory.get_user_data(agent_id)
-    user_data.agent_id = agent_id
-    agent_config = await AgentFactory.load_agent_config(user_data,agent_id)
-    user_data.outbound_trunk_id = agent_config.outbound_trunk_id
-    user_data.human_escalation_phone = agent_config.human_phone_number
-    user_data.admin_id = agent_config.admin_id
-    agent_config.call_type = metadata["call_type"]
+    agent_config = await AgentFactory.load_agent_config(agent_id=agent_id)
+
+    agent_config.call_type = call_type
+
+    #~~~~~~~~##~~~~~~~~#
+    #~~~~~~~~##~~~~~~~~#
+
+
+    #~~~~~~~~##~~~~~~~~#    
+    #~~~~~~~~##~~~~~~~~#
 
     # Start Egress Service if recording allowed
     if agent_config.allow_recording is True:
         egress_info = await start_audio_only_egress(ctx)
 
+    lead_context: LeadContext = await AgentFactory.get_lead_context(agent_id=agent_id,
+                                                                    user_id=user_id,
+                                                                    user_phone_number="+91")  #TODO check non SIP working
     session = AgentSession(
         preemptive_generation=True, 
-        userdata=user_data,
+        userdata=lead_context.data,
         user_away_timeout=10)
     
-    agent = AgentFactory.from_config(agent_config)
+    agent = AgentFactory.from_config(cfg=agent_config, lead_ctx=lead_context)
+    
+    print(f"Starting session with agent_id: {agent_id}")
     await session.start(
         room=ctx.room,
         agent=agent,
@@ -123,24 +131,13 @@ async def inbound_entrypoint(ctx: JobContext):
     )
 
 
-    async def user_presence_task():
-        # try to ping the user 3 times, if we get no answer, close the session
-        logger.info("User presence task started due to inactivity.")
-        for _ in range(3):
-            await session.generate_reply(
-                instructions=(
-                    "The user has been inactive. Politely check if the user is still present."
-                )
-            )
-            await asyncio.sleep(10)
-        logger.info("Session closed due to user inactivity.")
-        session.shutdown()
+
 
 
     if metadata["call_type"] not in settings.DEV.SIP_EXCLUDED_CALL_TYPES:
         remote_participant = await ctx.wait_for_participant()
         if remote_participant.attributes.get("sip.phoneNumber", None):
-            user_data.user_timezone = await AgentFactory.get_time_from_phone(remote_participant.attributes["sip.phoneNumber"])
+            lead_context.data.user_timezone = await AgentFactory.get_time_from_phone(remote_participant.attributes["sip.phoneNumber"])
             agent_config = await update_sip_context(ctx, agent_config)
             await call_models.inbound_handler(agent_config, session)
     else:
@@ -177,6 +174,19 @@ async def inbound_entrypoint(ctx: JobContext):
         # handler = metrics_handlers.get(ev.metrics.type)
         # if handler:
         #     handler(ev.metrics)
+
+    async def user_presence_task():
+        # try to ping the user 3 times, if we get no answer, close the session
+        logger.info("User presence task started due to inactivity.")
+        for _ in range(3):
+            await session.generate_reply(
+                instructions=(
+                    "The user has been inactive. Politely check if the user is still present."
+                )
+            )
+            await asyncio.sleep(10)
+        logger.info("Session closed due to user inactivity.")
+        session.shutdown()
 
 async def post_call_analysis(session: AgentSession):
     headers = {

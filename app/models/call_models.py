@@ -25,7 +25,7 @@ from livekit.agents import llm, AgentSession
 from livekit.agents.metrics import UsageSummary
 
 from app.shared import schemas
-from app.agents import AgentConfig, CallDetails
+from app.agents import AgentConfig, CallDetails, LeadSummary
 from app.models import db
 
 
@@ -264,6 +264,7 @@ class VoiceCallLeads(Document):
 
     user_id = ObjectIdField(required=True)
     admin_id = ObjectIdField()
+    last_call_id = ObjectIdField()
 
     phone = StringField()  #TODO QUERY Need list?
     first_name = StringField()
@@ -559,6 +560,7 @@ async def upsert_voice_call_lead(
     admin_id: str,
     agent_id: str,
     phone: str | None = None,
+    last_call_id: str | None = None,
     first_name: str | None = None,
     last_name: str | None = None,
     email: str | None = None,
@@ -599,7 +601,10 @@ async def upsert_voice_call_lead(
             lead.metadata.update(metadata)  # merge with existing
         else:
             lead.metadata = metadata
-            
+    
+    if last_call_id:
+        lead.last_call_id = ObjectId(last_call_id)
+
     # ---- Agent-specific summary ----
     if agent_summary:
         existing = next(
@@ -633,3 +638,37 @@ async def get_lead_by_phone(phone_number: str, user_id: str) -> VoiceCallLeads |
     ).first()
 
     return lead
+
+async def get_summary_by_phone_number(phone_number: str, user_id: str, agent_id: str) -> LeadSummary:
+    lead = await get_lead_by_phone(phone_number, user_id)
+    
+    if not lead:
+        return None
+
+    last_call_details = await get_latest_completed_call_details(phone_number, agent_id)
+
+    # Try to find agent-specific summary first
+    agent_summary = next(
+        (s.summary for s in lead.agents_summary if str(s.agent_id) == agent_id),
+        None
+    )
+
+    # Fallback to overall summary
+    return LeadSummary(
+        agent_summary=agent_summary if agent_summary else None,
+        overall_summary=lead.overall_summary if lead.overall_summary else None,
+        last_call_summary=last_call_details.analysis.summary if last_call_details and last_call_details.analysis and last_call_details.analysis.summary else None
+    )
+
+async def get_latest_completed_call_details(phone_number: str, agent_id: str) -> VoiceCallDetails | None:
+    last_call = VoiceCalls.objects(
+        customer_phone=phone_number,
+        agent_id=ObjectId(agent_id),
+        status="completed"
+    ).order_by("-start_time_unix_secs").first()
+
+    if not last_call:
+        return None
+
+    call_details = VoiceCallDetails.objects(call_id=str(last_call.id)).first()
+    return call_details
