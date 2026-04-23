@@ -89,8 +89,8 @@ async def inbound_entrypoint(ctx: JobContext):
     # Example: resolve from headers / room metadata / API
     metadata = json.loads(ctx.job.metadata)
     agent_id = metadata["agent_id"]
-    user_id = metadata["user_id"] 
-
+    admin_id = metadata["admin_id"] 
+    lead_phone_number = metadata["phone_number"] 
     call_type = metadata["call_type"]
 
     print(f"Received Agent Metadata:\n {metadata}\n")
@@ -111,8 +111,8 @@ async def inbound_entrypoint(ctx: JobContext):
         egress_info = await start_audio_only_egress(ctx)
 
     lead_context: LeadContext = await AgentFactory.get_lead_context(agent_id=agent_id,
-                                                                    user_id=user_id,
-                                                                    user_phone_number="+91")  #TODO HAZARD check non SIP working
+                                                                    admin_id=admin_id,
+                                                                    user_phone_number=lead_phone_number)
     session = AgentSession(
         preemptive_generation=True, 
         userdata=lead_context.data,

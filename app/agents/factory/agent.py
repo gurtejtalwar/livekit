@@ -159,8 +159,8 @@ class InboundAgent(Agent):
 
 class AgentFactory:
     @staticmethod
-    async def get_lead_context(agent_id: str, user_id: str, user_phone_number: str = "") -> LeadContext:
-        lead_data = await helper.get_lead_data(user_id, user_phone_number)
+    async def get_lead_context(agent_id: str, admin_id: str, user_phone_number: str = "") -> LeadContext:
+        lead_data = await helper.get_lead_data(admin_id, user_phone_number)
         summary = await helper.get_lead_agent_and_overall_summary(agent_id=agent_id, user_id=user_id, phone_number=user_phone_number)
         
         return LeadContext(data=lead_data, summary=summary)

@@ -32,12 +32,12 @@ def fetch_json_from_s3(url: str) -> dict:
     except ValueError:
         raise ValueError("Response content is not valid JSON")
     
-async def get_lead_data(user_id: str, phone_number: str) -> LeadData: #TODO HAZARD
-    lead = await get_lead_by_phone(phone_number, user_id)
+async def get_lead_data(admin_id: str, phone_number: str) -> LeadData: #TODO HAZARD
+    lead = await get_lead_by_phone(phone_number, admin_id)
 
     if lead is not None:
         return LeadData(
-            user_id=str(lead.user_id),
+            admin_id=str(lead.admin_id),
             lead_id=str(lead.id),
             name=lead.first_name,
             email=lead.email,
