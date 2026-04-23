@@ -90,7 +90,7 @@ async def inbound_entrypoint(ctx: JobContext):
     metadata = json.loads(ctx.job.metadata)
     agent_id = metadata["agent_id"]
     user_id = metadata["user_id"] 
-    
+
     call_type = metadata["call_type"]
 
     print(f"Received Agent Metadata:\n {metadata}\n")
@@ -112,7 +112,7 @@ async def inbound_entrypoint(ctx: JobContext):
 
     lead_context: LeadContext = await AgentFactory.get_lead_context(agent_id=agent_id,
                                                                     user_id=user_id,
-                                                                    user_phone_number="+91")  #TODO check non SIP working
+                                                                    user_phone_number="+91")  #TODO HAZARD check non SIP working
     session = AgentSession(
         preemptive_generation=True, 
         userdata=lead_context.data,
@@ -200,7 +200,8 @@ async def post_call_analysis(session: AgentSession):
         f"{settings.P1_ISC_URL}/post-call-analysis",
         headers=headers,
         json={
-            "transcript": transcript
+            "transcript": transcript,
+            "admin_id": session.userdata.admin_id,
         })
     analysis = schemas.PostCallAnalysis(**res["data"])
     logger.info(f"Post-call analysis: {analysis}")
