@@ -119,6 +119,7 @@ async def inbound_entrypoint(ctx: JobContext):
         user_away_timeout=10)
     
     agent = AgentFactory.from_config(cfg=agent_config, lead_ctx=lead_context)
+    lead_context.data.admin_id = agent_config.admin_id
     
     print(f"Starting session with agent_id: {agent_id}")
     await session.start(
@@ -129,7 +130,7 @@ async def inbound_entrypoint(ctx: JobContext):
             close_on_disconnect=False,
         ),
     )
-
+    print("Session started")
 
 
 
