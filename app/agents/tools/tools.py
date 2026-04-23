@@ -240,10 +240,16 @@ async def end_call(ctx: RunContext, reason: str = ""):
     # ✅ Step 4: safe to end
     job_ctx = get_job_context()
     if job_ctx:
-        await session.aclose()
-        await job_ctx.api.room.delete_room(
-            api.DeleteRoomRequest(room=job_ctx.room.name)
-        )
+        try:
+            logger.info("Closing Session")
+            await session.aclose()
+            logger.info("Deleting Rooms")
+            await job_ctx.api.room.delete_room(
+                api.DeleteRoomRequest(room=job_ctx.room.name)
+            )
+        except Exception as e:
+            logger.error(f"Error while ending call: {e}")
+            
     else:
         logger.error("No job context available to end call")
 
