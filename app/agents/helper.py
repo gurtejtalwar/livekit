@@ -1,5 +1,7 @@
-from bson import ObjectId
+import requests
 import logging
+from bson import ObjectId
+
 from app.shared import models
 from app import agents
 from app.agents.prompt import inbound
@@ -8,6 +10,28 @@ from app.models.call_models import get_lead_by_phone, get_summary_by_phone_numbe
 
 logger = logging.getLogger(__name__)
 
+def fetch_json_from_s3(url: str) -> dict:
+    """
+    Fetch JSON data from a public S3 URL and return it as a Python dictionary.
+
+    Args:
+        url (str): Public S3 URL to the JSON file
+
+    Returns:
+        dict: Parsed JSON data
+
+    Raises:
+        requests.exceptions.RequestException: If the request fails
+        ValueError: If the response is not valid JSON
+    """
+    response = requests.get(url, timeout=10)
+    response.raise_for_status()  # Raises error for bad status codes
+
+    try:
+        return response.json()
+    except ValueError:
+        raise ValueError("Response content is not valid JSON")
+    
 async def get_lead_data(user_id: str, phone_number: str) -> LeadData: #TODO HAZARD
     lead = await get_lead_by_phone(phone_number, user_id)
 
@@ -32,7 +56,6 @@ async def get_lead_agent_and_overall_summary(agent_id: str, user_id: str, phone_
     return summary
 
 async def load_agent_runtime_config(agent_id: str):
-    workflow_doc = None
     agent: models.VoiceAgent = models.VoiceAgent.objects(
         id=ObjectId(agent_id)).first()
     if not agent:
@@ -51,8 +74,10 @@ async def load_agent_runtime_config(agent_id: str):
     # voice_doc: models.VoiceAgentVoiceConfig = models.VoiceAgentVoiceConfig.objects(
     #     agentId=agent.id).first()
 
+    workflow_doc = None
     if config_doc.isWorkflowEnabled:
-        workflow_doc: models.VoiceAgentWorkflow = models.VoiceAgentWorkflow.objects(agentId=agent.id).first()
+        workflow_s3_url = config_doc.workflowS3Url
+        workflow_doc = fetch_json_from_s3(workflow_s3_url) if workflow_s3_url else None
     
     human_phone_number = None
     if escalation_doc.humanEscalationEnabled is True and escalation_doc.teamMembers:
@@ -126,7 +151,7 @@ async def load_agent_runtime_config(agent_id: str):
         agent_name=agent.agentName,
         knowledge_base_id=identity_doc.resourceCentreId,
         system_prompt=system_prompt,
-        workflow_graph_json=workflow_doc.workflow_config if workflow_doc else None,
+        workflow_graph_json=workflow_doc if workflow_doc else None,
         models=agents.ModelConfig(
             stt=agents.STTConfig(
                 provider=stt_provider,
