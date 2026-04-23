@@ -77,7 +77,7 @@ async def load_agent_runtime_config(agent_id: str):
     #     f"Caller Current Time: {lead_data.user_current_time}\n"
     #     f"Caller Timezone: {lead_data.user_timezone}\n"
     # )
-    # lk_prompt = inbound.lk_prompt.format(
+    # lk_base_prompt = inbound.lk_base_prompt.format(
     #     agent_name=agent.agentName,
     #     admin_goal=system_prompt,
     #     language=voice_config_doc.language if voice_config_doc and voice_config_doc.language else "English",

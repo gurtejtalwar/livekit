@@ -1,5 +1,5 @@
 from app.agents import AgentConfig, LeadContext
-
+from app.agents.prompt import inbound
 
 CALL_TYPE_MAP = {
     "test-inbound": "inbound",
@@ -55,15 +55,33 @@ class PromptBuilder:
 
     def build(self):
         return "\n\n".join([
-            self._base_prompt(),
+            self._system_prompt(),
+            self._admin_goal(),
             self._user_context(),
             self._call_context(),
             self._callback_context(),
             # self._tool_context(),
         ])
     
-    def _base_prompt(self):
-        return self.config.system_prompt
+    def _system_prompt(self):
+        return inbound.lk_base_prompt.format(
+            agent_name=self.config.agent_name,
+            language=self.config.models.stt.language if self.config.models and self.config.models.stt and self.config.models.stt.language else "en",
+            additional_languages=", ".join(self.config.additional_languages) if self.config and self.config.additional_languages else [],
+            time=self.lead_data.user_current_time,
+            timezone=self.config.call_details.timezone if self.config.call_details and self.config.call_details.timezone else "UTC",
+        )
+
+    # lk_base_prompt = inbound.lk_base_prompt.format(
+    #     agent_name=agent.agentName,
+    #     admin_goal=system_prompt,
+    #     language=voice_config_doc.language if voice_config_doc and voice_config_doc.language else "English",
+    #     additional_languages=", ".join(config_doc.additionalLanguages) if config_doc and config_doc.additionalLanguages else [],
+    #     time=get_time_in_timezone(config_doc.timezone),
+    #     timezone=config_doc.timezone
+    # )  
+    def _admin_goal(self):
+        return f"""ADMIN GOAL: \n{self.config.system_prompt}"""
 
     def _user_context(self):
         u = self.lead_data
