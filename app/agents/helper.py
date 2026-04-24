@@ -51,8 +51,8 @@ async def get_lead_data(admin_id: str, phone_number: str) -> LeadData: #TODO HAZ
             phone=phone_number
         )
 
-async def get_lead_agent_and_overall_summary(agent_id: str, user_id: str, phone_number: str) -> LeadSummary: #TODO HAZARD
-    summary = await get_summary_by_phone_number(phone_number, user_id, agent_id)
+async def get_lead_agent_and_overall_summary(agent_id: str, admin_id: str, phone_number: str) -> LeadSummary: #TODO HAZARD
+    summary = await get_summary_by_phone_number(phone_number, admin_id, agent_id)
     return summary
 
 async def load_agent_runtime_config(agent_id: str):

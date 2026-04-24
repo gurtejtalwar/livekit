@@ -631,16 +631,16 @@ async def upsert_voice_call_lead(
 
     return {"status": "success"}
 
-async def get_lead_by_phone(phone_number: str, user_id: str) -> VoiceCallLeads | None:
+async def get_lead_by_phone(phone_number: str, admin_id: str) -> VoiceCallLeads | None:
     lead = VoiceCallLeads.objects(
         phone=phone_number,
-        user_id=ObjectId(user_id)
+        admin_id=ObjectId(admin_id)
     ).first()
 
     return lead
 
-async def get_summary_by_phone_number(phone_number: str, user_id: str, agent_id: str) -> LeadSummary:
-    lead = await get_lead_by_phone(phone_number, user_id)
+async def get_summary_by_phone_number(phone_number: str, admin_id: str, agent_id: str) -> LeadSummary:
+    lead = await get_lead_by_phone(phone_number, admin_id)
     
     if not lead:
         return None
