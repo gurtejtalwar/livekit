@@ -90,7 +90,7 @@ async def inbound_entrypoint(ctx: JobContext):
     metadata = json.loads(ctx.job.metadata)
     agent_id = metadata["agent_id"]
     admin_id = metadata["admin_id"] 
-    lead_phone_number = metadata["phone_number"] 
+    lead_phone_number = None 
     call_type = metadata["call_type"]
 
     print(f"Received Agent Metadata:\n {metadata}\n")
@@ -110,6 +110,10 @@ async def inbound_entrypoint(ctx: JobContext):
     if agent_config.allow_recording is True:
         egress_info = await start_audio_only_egress(ctx)
 
+    if "outbound" in call_type:
+        lead_phone_number = metadata["phone_number"] 
+    else: # widget, test-inbound, test-widget does not have phone number 
+        lead_phone_number = metadata.get("phone_number", None) # In some cases, the phone number may not be available in metadata for inbound calls
     lead_context: LeadContext = await AgentFactory.get_lead_context(agent_id=agent_id,
                                                                     admin_id=admin_id,
                                                                     user_phone_number=lead_phone_number)
