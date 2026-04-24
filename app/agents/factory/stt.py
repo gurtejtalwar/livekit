@@ -13,7 +13,9 @@ class STT:
         "deepgram-v2": lambda cfg: deepgram.STTv2(
             model=cfg.models.stt.model
         ),
-        "assemblyai": lambda cfg: assemblyai.STT(),
+        "assemblyai": lambda cfg: assemblyai.STT(
+            model=cfg.models.stt.model,
+        ),
     }
 
     @classmethod
