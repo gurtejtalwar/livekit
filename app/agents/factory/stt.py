@@ -7,7 +7,8 @@ class STT:
 
     _providers: Dict[str, Callable[[AgentConfig], object]]  = {
         "deepgram": lambda cfg: deepgram.STT(
-            model=cfg.models.stt.model
+            model=cfg.models.stt.model,
+            language=cfg.models.stt.language
         ),
         "deepgram-v2": lambda cfg: deepgram.STTv2(
             model=cfg.models.stt.model
