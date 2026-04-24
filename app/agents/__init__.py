@@ -30,7 +30,7 @@ class LeadData:
     name: str
     email: str
 
-    user_id: str
+    user_id: str = ""
     lead_id: str = ""
     agent_id: str = ""
     admin_id: str = ""

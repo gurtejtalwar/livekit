@@ -124,6 +124,7 @@ async def inbound_entrypoint(ctx: JobContext):
     
     agent = AgentFactory.from_config(cfg=agent_config, lead_ctx=lead_context)
     lead_context.data.admin_id = agent_config.admin_id
+    lead_context.data.user_id = agent_config.user_id
     
     print(f"Starting session with agent_id: {agent_id}")
     await session.start(
