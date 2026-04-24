@@ -3,17 +3,36 @@ import re
 import pickle
 import faiss
 import numpy as np
+from starlette.middleware.base import BaseHTTPMiddleware
+import logging
+from datetime import datetime, timedelta, timezone
+import time
 
 from dotenv import load_dotenv
 from bson import ObjectId
 from motor.motor_asyncio import AsyncIOMotorClient
-from fastapi import FastAPI
+from fastapi import FastAPI, Request
 from pydantic import BaseModel
 from typing import List
 
 from sentence_transformers import SentenceTransformer
 
 load_dotenv(override=True)
+IST = timezone(timedelta(hours=5, minutes=30))
+
+class ISTFormatter(logging.Formatter):
+    def formatTime(self, record, datefmt=None):
+        dt = datetime.fromtimestamp(record.created, IST)
+        return dt.strftime("%Y-%m-%d %H:%M:%S")
+
+formatter = ISTFormatter("%(asctime)s [%(levelname)s] %(name)s: %(message)s")
+
+handler = logging.StreamHandler()
+handler.setFormatter(formatter)
+
+logger = logging.getLogger()
+logger.setLevel(logging.DEBUG)
+logger.addHandler(handler)
 
 app = FastAPI()
 
@@ -29,6 +48,32 @@ model = SentenceTransformer("all-MiniLM-L6-v2")
 
 mongo_client = AsyncIOMotorClient(MONGO_URI)
 db = mongo_client[DB_NAME]
+
+class TimingMiddleware(BaseHTTPMiddleware):
+    async def dispatch(self, request: Request, call_next):
+        start = time.time()
+
+        response = await call_next(request)
+
+        duration = time.time() - start
+
+        logger.info(f"{request.method} {request.url.path} took {duration:.3f}s")
+
+        return response
+
+class LogRequestMiddleware(BaseHTTPMiddleware):
+    async def dispatch(self, request: Request, call_next):
+        body = await request.body()
+
+        logger.debug(f"Request URL: {request.url}")
+        logger.debug(f"Headers: {dict(request.headers)}")
+        logger.debug(f"Body: {body.decode('utf-8', errors='ignore')}")
+
+        response = await call_next(request)
+        return response
+
+app.add_middleware(LogRequestMiddleware)
+app.add_middleware(TimingMiddleware)
 
 # ==============================
 # Payload Schema
