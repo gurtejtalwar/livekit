@@ -138,9 +138,14 @@ async def load_agent_runtime_config(agent_id: str):
     tools = config_doc.tools if config_doc and config_doc.tools else []
 
     # ---------- GREETING ----------
-    greeting = (
-        config_doc.welcomeMessage
-        if config_doc and config_doc.welcomeMessage
+    inbound_first_message = (
+        config_doc.inboundFirstMessage
+        if config_doc and config_doc.inboundFirstMessage
+        else "Hello! How can I assist you today?"
+    )
+    outbound_first_message = (
+        config_doc.outboundFirstMessage
+        if config_doc and config_doc.outboundFirstMessage
         else "Hello! How can I assist you today?"
     )
 
@@ -174,7 +179,10 @@ async def load_agent_runtime_config(agent_id: str):
             ),
         ),
         tools=tools,
-        greeting=greeting,
+        greeting=agents.Greeting(
+            inbound=inbound_first_message,
+            outbound=outbound_first_message
+        ),
         allow_recording=advanced_doc.privacy.get("audioRecording", True),
         max_duration=advanced_doc.inboundTimeout.get("maxDuration", -1) if advanced_doc else None,
         human_phone_number=human_phone_number,

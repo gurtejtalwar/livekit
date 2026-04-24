@@ -86,6 +86,9 @@ class VoiceAgentConfig(Document):
     timezone = StringField(default='Asia/Calcutta')
     isWorkflowEnabled = BooleanField(default=False)
     workflowS3Url = StringField()
+    inboundFirstMessage = StringField()
+    outboundFirstMessage = StringField()
+    
 class VoiceAgentIdentity(Document):
     meta = {
         "collection": "voice-identity",

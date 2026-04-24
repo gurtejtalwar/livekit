@@ -138,6 +138,9 @@ class ModelConfig(BaseModel):
     llm: LLMConfig
     tts: TTSConfig
 
+class Greeting(BaseModel):
+    inbound: str
+    outbound: str
 class AgentConfig(BaseModel):
     models: ModelConfig
     lk_plugins: LivekitPlugins = LivekitPlugins()
@@ -167,7 +170,7 @@ class AgentConfig(BaseModel):
     allow_interruptions: bool = True
     allow_recording: bool
 
-    greeting: str = "Hello! How can I assist you today?"
+    greeting: Greeting
     # Livekit JobContext
     ctx: JobContext = None
 
