@@ -75,7 +75,7 @@ class InboundAgent(Agent):
 
         self.config = config
         self._filler_task = None
-        
+
     @property
     def is_filler_enabled(self) -> bool:
         """Checks if the user actually configured the timeout settings."""
@@ -150,7 +150,7 @@ class InboundAgent(Agent):
     ) -> None:
         logger.info("Node: on_user_turn_completed called")
         # Only start if the config exists
-        if self.config.is_filler_enabled:
+        if self.is_filler_enabled:
             logger.info("Config found: Starting filler timer.")
             await self._cancel_filler_task()
             self._filler_task = asyncio.create_task(self._run_filler_timer())
