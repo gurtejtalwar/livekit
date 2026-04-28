@@ -74,7 +74,8 @@ class InboundAgent(Agent):
         )
 
         self.config = config
-
+        self._filler_task = None
+        
     @property
     def is_filler_enabled(self) -> bool:
         """Checks if the user actually configured the timeout settings."""
