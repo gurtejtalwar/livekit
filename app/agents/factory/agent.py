@@ -92,7 +92,7 @@ class InboundAgent(Agent):
             message = self.config.agent_timeout.filler_message
             
             await asyncio.sleep(delay)
-            await self.say(message)
+            await self.session.say(message)
         except asyncio.CancelledError:
             pass
 
