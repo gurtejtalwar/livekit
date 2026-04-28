@@ -255,7 +255,25 @@ async def end_call(ctx: RunContext, reason: str = ""):
 
 @tool("detected_voicemail")
 async def detected_voicemail(ctx: RunContext, dummy: str=""):
-    """Call this tool if you have detected a voicemail system, AFTER hearing the voicemail greeting"""
+    """
+    Trigger this tool IMMEDIATELY when the call is answered by a voicemail system.
+
+    Strong indicators of voicemail include phrases like:
+    - "Your call has been forwarded to voicemail"
+    - "Please leave a message after the tone"
+    - "The person you are trying to reach is not available"
+    - "Record your message"
+    - "At the tone"
+    - Beeps or long pauses followed by recording instructions
+
+    Rules:
+    - This should take priority over normal conversation or end_call.
+    - Do NOT respond conversationally to voicemail systems.
+    - Do NOT wait for further user input once voicemail is clear.
+    - Trigger as soon as voicemail intent is confidently detected.
+
+    After triggering, the system will leave a voicemail message and hang up.
+    """
     await ctx.session.generate_reply(
         instructions="Leave a voicemail message letting the user know you'll call back later."
     )
