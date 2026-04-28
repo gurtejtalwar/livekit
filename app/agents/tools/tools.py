@@ -249,7 +249,7 @@ async def end_call(ctx: RunContext, reason: str = ""):
             )
         except Exception as e:
             logger.error(f"Error while ending call: {e}")
-            
+
     else:
         logger.error("No job context available to end call")
 
@@ -485,7 +485,7 @@ async def sales_lead_generation(
     Create a sales lead from the conversation.
 
     This tool must ONLY be used after:
-    - The caller explicitly agrees to be contacted or followed up
+    - The caller shows interest in being contacted by sales or provides relevant contact details
     - All required information has been collected
 
     ----------------------------

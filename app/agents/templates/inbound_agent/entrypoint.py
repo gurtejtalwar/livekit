@@ -96,7 +96,7 @@ async def inbound_entrypoint(ctx: JobContext):
     print(f"Received Agent Metadata:\n {metadata}\n")
 
     agent_config = await AgentFactory.load_agent_config(agent_id=agent_id)
-
+    agent_config.campaign_id = metadata.get("campaign_id", None)
     agent_config.call_type = call_type
 
     #~~~~~~~~##~~~~~~~~#
@@ -145,7 +145,7 @@ async def inbound_entrypoint(ctx: JobContext):
         if remote_participant.attributes.get("sip.phoneNumber", None):
             lead_context.data.user_timezone = await AgentFactory.get_time_from_phone(remote_participant.attributes["sip.phoneNumber"])
             agent_config = await update_sip_context(ctx, agent_config)
-            await call_models.inbound_handler(agent_config, session)
+            await call_models.sip_handler(agent_config, session)
     else:
         await call_models.test_inbound_handler(agent_config, session)
 

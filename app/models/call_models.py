@@ -215,6 +215,7 @@ class VoiceCallDetails(Document):
     user_id = ObjectIdField()
 
     agent_id = ObjectIdField()
+    campaign_id = ObjectIdField()
     agent_name = StringField()
     room_name = StringField()
     call_type = StringField()
@@ -487,7 +488,7 @@ async def save_analysis(call_id: str, analysis: schemas.PostCallAnalysis):
     call_details.save()
 
 
-async def inbound_handler(config: AgentConfig, session: AgentSession):
+async def sip_handler(config: AgentConfig, session: AgentSession):
     participant = next(iter(session._room_io._room._remote_participants.values()), None)
     sip_attrs = participant.attributes if participant else None
     call = VoiceCalls(
@@ -507,6 +508,7 @@ async def inbound_handler(config: AgentConfig, session: AgentSession):
         call_id=str(call.id),                 # internal linkage
         user_id=config.user_id,
         agent_id=config.agent_id,
+        campaign_id=config.campaign_id,
         agent_name=config.agent_name,
         room_name=session.room_io.room.name if session.room_io and session.room_io.room else None,
         call_type=config.call_type,

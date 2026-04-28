@@ -111,6 +111,9 @@ class InboundAgent(Agent):
     async def on_exit(self):
         logger.info("Node: on_exit called")
 
+    async def on_user_turn_completed(self):
+        logger.info("Node: on_user_turn_completed called")
+        
     async def _switch_language(self, language_code: str) -> None:
         """Helper method to switch the language"""
         # if language_code == current_language:

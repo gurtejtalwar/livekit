@@ -141,6 +141,11 @@ class ModelConfig(BaseModel):
 class Greeting(BaseModel):
     inbound: str
     outbound: str
+
+class AgentTimeout(BaseModel):
+    delay_before_message: int = None
+    filler_message: str = None
+
 class AgentConfig(BaseModel):
     models: ModelConfig
     lk_plugins: LivekitPlugins = LivekitPlugins()
@@ -150,6 +155,7 @@ class AgentConfig(BaseModel):
     admin_id: str
     agent_name: str
 
+    campaign_id: str = None
     knowledge_base_id: Optional[str] = None
     workflow_graph_json: Optional[dict] = None
 
@@ -180,3 +186,4 @@ class AgentConfig(BaseModel):
     max_duration: Optional[int] = None #TODO WRAP IN OBJECT
     outbound_trunk_id: str
     human_phone_number: Optional[str] = None
+    agent_timeout: Optional[AgentTimeout] = None
