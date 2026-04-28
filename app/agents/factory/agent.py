@@ -75,6 +75,36 @@ class InboundAgent(Agent):
 
         self.config = config
 
+    @property
+    def is_filler_enabled(self) -> bool:
+        """Checks if the user actually configured the timeout settings."""
+        return (
+            self.config.agent_timeout is not None and
+            self.config.agent_timeout.delay_before_message is not None and
+            self.config.agent_timeout.filler_message is not None
+        )
+
+    async def _run_filler_timer(self):
+        """Timer logic using the config values."""
+        try:
+            # Access the config safely now that we checked is_filler_enabled
+            delay = self.config.agent_timeout.delay_before_message
+            message = self.config.agent_timeout.filler_message
+            
+            await asyncio.sleep(delay)
+            await self.say(message)
+        except asyncio.CancelledError:
+            pass
+
+    async def _cancel_filler_task(self):
+        if self._filler_task and not self._filler_task.done():
+            self._filler_task.cancel()
+            try:
+                await self._filler_task
+            except asyncio.CancelledError:
+                pass
+            self._filler_task = None
+
     async def on_enter(self):
         logger.info("Node: on_enter called")
         if getattr(self.config, 'workflow_graph_json', None):
@@ -106,6 +136,9 @@ class InboundAgent(Agent):
                  text,
                  model_settings):
         logger.info("Node: tts_node called")
+        # We always attempt to cancel, just in case a task is running
+        # (This is safe even if is_filler_enabled is False because _cancel_filler_task handles it)
+        await self._cancel_filler_task()
         return self.default.tts_node(self, text, model_settings)
     
     async def on_exit(self):
@@ -115,6 +148,11 @@ class InboundAgent(Agent):
         self, turn_ctx: llm.ChatContext, new_message: llm.ChatMessage
     ) -> None:
         logger.info("Node: on_user_turn_completed called")
+        # Only start if the config exists
+        if self.config.is_filler_enabled:
+            logger.info("Config found: Starting filler timer.")
+            await self._cancel_filler_task()
+            self._filler_task = asyncio.create_task(self._run_filler_timer())
 
     async def _switch_language(self, language_code: str) -> None:
         """Helper method to switch the language"""
