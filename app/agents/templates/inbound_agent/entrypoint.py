@@ -154,7 +154,7 @@ async def inbound_entrypoint(ctx: JobContext):
     # If a graph workflow is active, the first AgentTask node (e.g. 'Greetings')
     # will naturally handle generating the system greeting via LLM prompt rules.
     if not getattr(agent_config, 'workflow_graph_json', None):
-        await session.say(agent_config.greeting.inbound if "inbound" in  call_type else agent_config.greeting.outbound, allow_interruptions=False)
+        await session.say(agent_config.greeting.inbound if "inbound" in  call_type else agent_config.greeting.outbound, allow_interruptions=True)
         # await session.generate_reply(instructions="Confirm the user is connected and greet them warmly.")
 
     if agent_config.max_duration and agent_config.max_duration>0:
