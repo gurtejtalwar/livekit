@@ -192,10 +192,20 @@ async def get_current_time(input: str) -> str:
 
 async def hangup_call(ctx: RunContext):
     # Ensure any pending agent speech is finished before killing the room
-    await ctx.wait_for_playout()
-    await api.room.delete_room(
-        api.DeleteRoomRequest(room=ctx.room.name)
-    )
+    job_ctx = get_job_context()
+    if job_ctx:
+        try:
+            logger.info("Closing Session")
+            await ctx.session.aclose()
+            logger.info("Deleting Rooms")
+            await job_ctx.api.room.delete_room(
+                api.DeleteRoomRequest(room=job_ctx.room.name)
+            )
+        except Exception as e:
+            logger.error(f"Error while hanging up call: {e}")
+
+    else:
+        logger.error("No job context available to hangup call")
 
 @tool("end_call")
 async def end_call(ctx: RunContext, reason: str = ""):
@@ -238,20 +248,7 @@ async def end_call(ctx: RunContext, reason: str = ""):
         return
 
     # ✅ Step 4: safe to end
-    job_ctx = get_job_context()
-    if job_ctx:
-        try:
-            logger.info("Closing Session")
-            await session.aclose()
-            logger.info("Deleting Rooms")
-            await job_ctx.api.room.delete_room(
-                api.DeleteRoomRequest(room=job_ctx.room.name)
-            )
-        except Exception as e:
-            logger.error(f"Error while ending call: {e}")
-
-    else:
-        logger.error("No job context available to end call")
+    await hangup_call(ctx)
 
 @tool("detected_voicemail")
 async def detected_voicemail(ctx: RunContext, dummy: str=""):
@@ -278,6 +275,7 @@ async def detected_voicemail(ctx: RunContext, dummy: str=""):
         instructions="Leave a voicemail message letting the user know you'll call back later."
     )
     await asyncio.sleep(0.5) # Add a natural gap to the end of the voicemail message
+    await ctx.wait_for_playout()
     await hangup_call(ctx)
 
 
