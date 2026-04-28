@@ -278,7 +278,7 @@ async def detected_voicemail(ctx: RunContext, dummy: str=""):
         instructions="Leave a voicemail message letting the user know you'll call back later."
     )
     await asyncio.sleep(0.5) # Add a natural gap to the end of the voicemail message
-    await hangup_call()
+    await hangup_call(ctx)
 
 
 #/ -- Book Appointment Tool --/
