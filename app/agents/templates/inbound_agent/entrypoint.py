@@ -117,14 +117,16 @@ async def inbound_entrypoint(ctx: JobContext):
     lead_context: LeadContext = await AgentFactory.get_lead_context(agent_id=agent_id,
                                                                     admin_id=admin_id,
                                                                     user_phone_number=lead_phone_number)
+    lead_context.data.admin_id = agent_config.admin_id
+    lead_context.data.user_id = agent_config.user_id
+    lead_context.data.agent_id = agent_config.agent_id
     session = AgentSession(
         preemptive_generation=True, 
         userdata=lead_context.data,
         user_away_timeout=10)
     
     agent = AgentFactory.from_config(cfg=agent_config, lead_ctx=lead_context)
-    lead_context.data.admin_id = agent_config.admin_id
-    lead_context.data.user_id = agent_config.user_id
+
     
     print(f"Starting session with agent_id: {agent_id}")
     await session.start(
