@@ -195,12 +195,12 @@ async def hangup_call(ctx: RunContext):
     job_ctx = get_job_context()
     if job_ctx:
         try:
-            logger.info("Closing Session")
-            await ctx.session.aclose()
             logger.info("Deleting Rooms")
             await job_ctx.api.room.delete_room(
                 api.DeleteRoomRequest(room=job_ctx.room.name)
             )
+            logger.info("Closing Session")
+            await ctx.session.aclose()
         except Exception as e:
             logger.error(f"Error while hanging up call: {e}")
 
@@ -240,12 +240,12 @@ async def end_call(ctx: RunContext, reason: str = ""):
         speech.chat_items[-1].content if speech.chat_items else "No chat items"
     )
     # 🧠 Step 2: wait OR get interrupted
-    await speech.wait_if_not_interrupted([])
+    # await speech.wait_if_not_interrupted([])
 
-    # ❌ Step 3: user interrupted → abort ending
-    if speech.interrupted:
-        logger.info("Call end interrupted by user, aborting call termination")
-        return
+    # # ❌ Step 3: user interrupted → abort ending
+    # if speech.interrupted:
+    #     logger.info("Call end interrupted by user, aborting call termination")
+    #     return
 
     # ✅ Step 4: safe to end
     await hangup_call(ctx)
