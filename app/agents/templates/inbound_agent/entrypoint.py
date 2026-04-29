@@ -1,4 +1,5 @@
 import asyncio
+import time
 import uuid
 import logging
 import json
@@ -176,15 +177,25 @@ async def inbound_entrypoint(ctx: JobContext):
     async def user_presence_task(delay: float):
         # try to ping the user 3 times, if we get no answer, close the session
         logger.info("User presence task started due to inactivity.")
-        for _ in range(3):
-            await asyncio.sleep(delay) # Wait for the user to respond
-            await session.generate_reply(
-                instructions=(
-                    "The user has been inactive. Politely check if the user is still present."
+        max_silence = agent_config.conv_behaviour.end_after_silence_seconds if agent_config.conv_behaviour and agent_config.conv_behaviour.end_after_silence_seconds else None
+        timer_start = time.monotonic()
+
+        def is_timeout_reached():
+            # Handle "infinite silence" cases
+            if max_silence is None or max_silence < 1:
+                return False
+            return (time.monotonic() - timer_start) >= max_silence
+
+        while not is_timeout_reached():
+            for _ in range(3):
+                await asyncio.sleep(delay) # Wait for the user to respond
+                await session.generate_reply(
+                    instructions=(
+                        "The user has been inactive. Politely check if the user is still present."
+                    )
                 )
-            )
         logger.info("Session closed due to user inactivity.")
-        session.shutdown()
+        ctx.shutdown(reason="User Inactive")
         
     @session.on("user_state_changed")
     def _user_state_changed(ev: UserStateChangedEvent):
