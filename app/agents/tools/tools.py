@@ -747,6 +747,7 @@ async def call_back(city: str,
 
     This tool must ONLY be used when:
     - The user explicitly requests a callback
+    - You have asked the user when they want to be called back - VERY IMPORTANT
     - The user agrees to be contacted later
     - A valid callback time can be determined
 
