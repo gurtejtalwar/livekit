@@ -131,7 +131,7 @@ TOOL_REGISTRY = {
     "feedback_review_collection": resolve_feedback_review_collection,
     "information_faq_mode": resolve_information_faq_mode,
     "follow_ups_reminders": resolve_follow_ups_reminders, #TODO HAZARD BACKLOG
-    "create_customer_ticket": resolve_create_customer_ticket, #TODO HAZARD BACKLOG
+    "create_customer_ticket": resolve_customer_support, #TODO HAZARD BACKLOG
 }
 
 def resolve_tools(config: AgentConfig) -> list:
