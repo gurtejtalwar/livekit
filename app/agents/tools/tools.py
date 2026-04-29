@@ -195,15 +195,17 @@ async def hangup_call(ctx: RunContext):
     job_ctx = get_job_context()
     if job_ctx:
         try:
-            logger.info("Deleting Rooms")
-            await job_ctx.api.room.delete_room(
-                api.DeleteRoomRequest(room=job_ctx.room.name)
-            )
-            logger.info("Closing Session")
+            logger.info("Initiating graceful shutdown...")
+            
+            # 1. Close the session first to stop audio processing
             await ctx.session.aclose()
+            
+            # 2. Trigger the shutdown of the job
+            # This is what calls your 'add_shutdown_callback' tasks!
+            job_ctx.shutdown()
+            
         except Exception as e:
             logger.error(f"Error while hanging up call: {e}")
-
     else:
         logger.error("No job context available to hangup call")
 
