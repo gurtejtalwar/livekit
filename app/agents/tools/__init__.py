@@ -86,6 +86,10 @@ def resolve_information_faq_mode(tool_ctx: ToolContext):
 def resolve_customer_support(tool_ctx: ToolContext):
     return customer_support
 
+
+def resolve_create_customer_ticket(tool_ctx: ToolContext):
+    return None
+
 def resolve_follow_ups_reminders(tool_ctx: ToolContext):
     return None
 # def resolve_utility_switch_to_english(tool_ctx: ToolContext):
@@ -127,6 +131,7 @@ TOOL_REGISTRY = {
     "feedback_review_collection": resolve_feedback_review_collection,
     "information_faq_mode": resolve_information_faq_mode,
     "follow_ups_reminders": resolve_follow_ups_reminders, #TODO HAZARD BACKLOG
+    "create_customer_ticket": resolve_create_customer_ticket, #TODO HAZARD BACKLOG
 }
 
 def resolve_tools(config: AgentConfig) -> list:
