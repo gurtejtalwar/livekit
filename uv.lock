@@ -1139,7 +1139,7 @@ requires-dist = [
     { name = "fastapi", specifier = ">=0.100.0" },
     { name = "groq", specifier = ">=0.37.1" },
     { name = "livekit", specifier = ">=1.0.19" },
-    { name = "livekit-agents", extras = ["assemblyai", "cartesia", "deepgram", "elevenlabs", "groq", "openai", "silero", "turn-detector"], specifier = "~=1.0" },
+    { name = "livekit-agents", extras = ["assemblyai", "cartesia", "deepgram", "elevenlabs", "groq", "openai", "silero", "turn-detector"], specifier = "~=1.4" },
     { name = "livekit-plugins-dtln", specifier = ">=0.1.5" },
     { name = "livekit-plugins-noise-cancellation", specifier = "~=0.2" },
     { name = "mongoengine", specifier = ">=0.29.1" },

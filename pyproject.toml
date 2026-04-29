@@ -7,7 +7,7 @@ requires-python = ">=3.10, <3.13"
 dependencies = [
     "faiss-cpu>=1.13.1",
     "groq>=0.37.1",
-    "livekit-agents[assemblyai,cartesia,deepgram,elevenlabs,groq,openai,silero,turn-detector]~=1.0",
+    "livekit-agents[assemblyai,cartesia,deepgram,elevenlabs,groq,openai,silero,turn-detector]~=1.4",
     "livekit-plugins-noise-cancellation~=0.2",
     "motor>=3.7.1",
     "optimum[onnxruntime]>=2.0.0",

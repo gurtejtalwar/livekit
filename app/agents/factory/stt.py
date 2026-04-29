@@ -18,7 +18,8 @@ class STT:
         ),
         "elevenlabs": lambda cfg: elevenlabs.STT(
             # use_realtime=True,
-            language_code=cfg.models.stt.language
+            language_code=cfg.models.stt.language,
+            model_id="scribe_v2_realtime",
         ),
     }
 
