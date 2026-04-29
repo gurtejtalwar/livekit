@@ -166,7 +166,7 @@ class PromptBuilder:
         if "call_back" in self.config.tools:
             context += "- call_back: Call this tool only after confirming the call back time with the user and getting explicit agreement to be contacted later. Always ask the user when they want to be called back before using this tool.\n"
         if "end_call" in self.config.tools:
-            context += "- end_call: Use this tool only when the user indicates they want to end the call. Do Not call this tool otherwise.\n"
+            context += "- end_call: Use this tool only when the user indicates they want to end the call. Do Not call this tool otherwise. Unless the user explicitly requests to end the call, do not use this tool, instead try to schedule a callback by first asking user their availability.\n"
         return context
 
     def _workflow_prompt(self):
