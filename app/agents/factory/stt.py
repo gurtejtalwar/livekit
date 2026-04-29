@@ -1,5 +1,5 @@
 from typing import Dict, Callable
-from livekit.plugins import deepgram, assemblyai
+from livekit.plugins import deepgram, assemblyai, elevenlabs
 
 from app.agents import AgentConfig
 
@@ -15,6 +15,10 @@ class STT:
         ),
         "assemblyai": lambda cfg: assemblyai.STT(
             model=cfg.models.stt.model,
+        ),
+        "elevenlabs": lambda cfg: elevenlabs.STT(
+            model=cfg.models.stt.model,
+            use_realtime=True,
         ),
     }
 
