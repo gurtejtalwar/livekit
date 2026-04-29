@@ -23,6 +23,7 @@ from app.models import call_models
 from app.shared import schemas
 from app.shared.settings import get_settings
 from app.utils.requests import _request
+from app.utils.timer import Timer
 
 settings = get_settings()
 logger = logging.getLogger(__name__)
@@ -129,14 +130,15 @@ async def inbound_entrypoint(ctx: JobContext):
 
     
     print(f"Starting session with agent_id: {agent_id}")
-    await session.start(
-        room=ctx.room,
-        agent=agent,
-        room_input_options=RoomInputOptions(
-            noise_cancellation=noise_cancellation.BVCTelephony(),
-            close_on_disconnect=False,
-        ),
-    )
+    with Timer("Session Startup"):
+        await session.start(
+            room=ctx.room,
+            agent=agent,
+            room_input_options=RoomInputOptions(
+                noise_cancellation=noise_cancellation.BVCTelephony(),
+                close_on_disconnect=False,
+            ),
+        )
     print("Session started")
 
 
@@ -238,7 +240,7 @@ async def update_sip_context(ctx: JobContext,
     caller = None
     for p in ctx.room.remote_participants.values():
         print(f"Remote Participants: \n {p}")
-        if p.identity.startswith("sip_"):
+        if "sip" in p.identity:
             caller = p
             break
 

@@ -59,6 +59,20 @@ async def _request(method: str, url: str, *, headers: dict, params=None, json=No
 
             return response_data
 
+        except httpx.HTTPStatusError as e:
+            latency_ms = int((time.time() - start_time) * 1000)
+            error_msg = f"HTTP {e.response.status_code} error for {url}"
+
+            span.set_attribute("http.latency_ms", latency_ms)
+            span.set_attribute("error", error_msg)
+            span.set_status(Status(StatusCode.ERROR))
+            raise RuntimeError({
+                "type": "HTTPStatusError",
+                "status_code": e.response.status_code,
+                "url": str(e.request.url),
+                "response": e.response.text[:500] if e.response else None
+            })
+
         except Exception as e:
             latency_ms = int((time.time() - start_time) * 1000)
 
@@ -66,7 +80,11 @@ async def _request(method: str, url: str, *, headers: dict, params=None, json=No
             span.set_attribute("error", str(e))
             span.set_status(Status(StatusCode.ERROR))
 
-            raise
+            raise RuntimeError({
+                "type": "UnknownError",
+                "message": str(e),
+                "url": url
+            })
 
 class APIClient:
     def __init__(self, base_url: str, api_key: str):

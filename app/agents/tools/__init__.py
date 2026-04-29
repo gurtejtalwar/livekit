@@ -125,7 +125,7 @@ TOOL_REGISTRY = {
     "sales_lead_generation": resolve_sales_lead_generation,
     "customer_support": resolve_customer_support,
     "feedback_review_collection": resolve_feedback_review_collection,
-    "information_faq_mode": resolve_information_faq_mode, #TODO HAZARD BACKLOG
+    "information_faq_mode": resolve_information_faq_mode,
     "follow_ups_reminders": resolve_follow_ups_reminders, #TODO HAZARD BACKLOG
 }
 
