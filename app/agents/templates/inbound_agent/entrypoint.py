@@ -108,7 +108,8 @@ async def inbound_entrypoint(ctx: JobContext):
                                                                     user_phone_number=lead_phone_number)
     lead_context.data.admin_id = agent_config.admin_id
     lead_context.data.user_id = agent_config.user_id
-    lead_context.data.agent_id = agent_config.agent_id
+    lead_context.data.outbound_trunk_id = agent_config.human_phone_number
+    lead_context.data.human_escalation_phone = agent_config.outbound_trunk_id
     session = AgentSession(
         preemptive_generation=True, 
         userdata=lead_context.data,
