@@ -25,6 +25,7 @@ class STT:
                 vad_threshold=0.35,
                 min_speech_duration_ms=120,
                 min_silence_duration_ms=100
+            )
         ),
     }
 
