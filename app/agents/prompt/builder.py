@@ -60,8 +60,10 @@ class PromptBuilder:
             self._user_context(),
             self._call_context(),
             self._callback_context(),
+            self._workflow_prompt(),
+            self._workflow_prompt() if self.config.workflow_graph_json else "",
+        ])  
             # self._tool_context(),
-        ])
     
     def _system_prompt(self):
         return inbound.lk_base_prompt.format(
@@ -165,3 +167,6 @@ class PromptBuilder:
             return "You may schedule callbacks if needed."
 
         return ""
+
+    def _workflow_prompt(self):
+        return inbound.state_machine_block_template.format(state_machine_json=self.config.workflow_graph_json) if self.config.workflow_graph_json else ""
