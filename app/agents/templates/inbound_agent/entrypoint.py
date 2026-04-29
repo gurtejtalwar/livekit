@@ -129,7 +129,7 @@ async def inbound_entrypoint(ctx: JobContext):
             room=ctx.room,
             agent=agent,
             room_input_options=RoomInputOptions(
-                noise_cancellation=deepfilter.noise_suppression(),
+                noise_cancellation=dtln.noise_suppression(strength=0.5),
                 close_on_disconnect=False,
             ),
         )
