@@ -18,29 +18,19 @@ class DeepFilterNoiseSuppressor(rtc.FrameProcessor[rtc.AudioFrame]):
     and maintains the internal LSTM/Convolutional state across audio frames.
     """
 
-    def __init__(
-        self,
-        strength: float = 1.0,
-        attenuation_limit_db: float = 100.0,
-    ) -> None:
-        # Initialize model and stateful handle
-        # config_allow_extra allows running on various hardware backends
-        self._model, self._df_state, _ = init_df()
-        
-        # Audio Buffers
-        self._input_queue = np.zeros(0, dtype=np.float32)
-        self._output_queue = np.zeros(0, dtype=np.float32)
-        
-        # Parameters
-        self._strength = max(0.0, min(1.0, strength))
-        self._attenuation_limit = attenuation_limit_db
-        
-        # Resamplers
-        self._downsampler: rtc.AudioResampler | None = None
-        self._upsampler: rtc.AudioResampler | None = None
-        self._native_rate: int = 0
-        
-        self._enabled = True
+    def __init__(self, strength: float = 1.0, attenuation_limit_db: float = 100.0) -> None:
+            # Initialize model and state
+            self._model, self._df_state, _ = init_df()
+            
+            self._input_queue = np.zeros(0, dtype=np.float32)
+            self._output_queue = np.zeros(0, dtype=np.float32)
+            self._strength = max(0.0, min(1.0, strength))
+            self._attenuation_limit = attenuation_limit_db
+            
+            self._downsampler: rtc.AudioResampler | None = None
+            self._upsampler: rtc.AudioResampler | None = None
+            self._native_rate: int = 0
+            self._enabled = True
 
     @property
     def enabled(self) -> bool:
@@ -107,13 +97,21 @@ class DeepFilterNoiseSuppressor(rtc.FrameProcessor[rtc.AudioFrame]):
             self._input_queue = self._input_queue[_DF_EXPECTED_SAMPLES:]
 
             # DeepFilterNet processing
-            # We use the stateful 'enhance' function which handles the overlap internally
-            enhanced_chunk = enhance(
+            # 1. Convert NumPy to Torch Tensor (shared memory)
+            chunk_tensor = torch.from_numpy(chunk)
+            
+            # 2. Process with DeepFilterNet
+            # Returns a torch.Tensor
+            enhanced_tensor = enhance(
                 self._model, 
                 self._df_state, 
-                chunk, 
+                chunk_tensor, 
                 atten_lim_db=self._attenuation_limit
             )
+            
+            # 3. Convert back to NumPy for the LiveKit output queue
+            # .detach().cpu() is good practice though it's already on CPU here
+            enhanced_chunk = enhanced_tensor.detach().cpu().numpy().flatten()
 
             # Apply strength (Wet/Dry Blend)
             if self._strength < 1.0:
