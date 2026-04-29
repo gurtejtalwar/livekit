@@ -97,21 +97,21 @@ class DeepFilterNoiseSuppressor(rtc.FrameProcessor[rtc.AudioFrame]):
             chunk = self._input_queue[:_DF_EXPECTED_SAMPLES]
             self._input_queue = self._input_queue[_DF_EXPECTED_SAMPLES:]
 
-            # DeepFilterNet processing
-            # 1. Convert NumPy to Torch Tensor (shared memory)
-            chunk_tensor = torch.from_numpy(chunk)
+            # 1. Convert to Torch Tensor and add Channel Dimension: (Samples,) -> (1, Samples)
+            # This satisfies the "to=2" dimensionality requirement in the traceback
+            chunk_tensor = torch.from_numpy(chunk).unsqueeze(0)
             
             # 2. Process with DeepFilterNet
-            # Returns a torch.Tensor
-            enhanced_tensor = enhance(
-                self._model, 
-                self._df_state, 
-                chunk_tensor, 
-                atten_lim_db=self._attenuation_limit
-            )
-            
-            # 3. Convert back to NumPy for the LiveKit output queue
-            # .detach().cpu() is good practice though it's already on CPU here
+            # Wrap in no_grad to save memory/compute during inference
+            with torch.no_grad():
+                enhanced_tensor = enhance(
+                    self._model, 
+                    self._df_state, 
+                    chunk_tensor, 
+                    atten_lim_db=self._attenuation_limit
+                )
+
+            # 3. Remove Channel Dimension and convert back to NumPy: (1, Samples) -> (Samples,)
             enhanced_chunk = enhanced_tensor.detach().cpu().numpy().flatten()
 
             # Apply strength (Wet/Dry Blend)
