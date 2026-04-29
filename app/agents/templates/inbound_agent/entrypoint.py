@@ -25,6 +25,7 @@ from app.models import call_models
 from app.shared import schemas
 from app.shared.settings import get_settings
 from app.utils.requests import _request
+from app.utils import deepfilter
 from app.utils.timer import Timer
 
 settings = get_settings()
@@ -128,8 +129,7 @@ async def inbound_entrypoint(ctx: JobContext):
             room=ctx.room,
             agent=agent,
             room_input_options=RoomInputOptions(
-                noise_cancellation=dtln.noise_suppression(strength=settings.DEV.NOISE_SUPPRESSION_STRENGTH),
-                # noise_cancellation=noise_cancellation.BVCTelephony() ,
+                noise_cancellation=deepfilter.noise_suppression(),
                 close_on_disconnect=False,
             ),
         )

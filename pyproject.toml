@@ -3,7 +3,7 @@ name = "livekit-test"
 version = "0.1.0"
 description = "Add your description here"
 readme = "README.md"
-requires-python = ">=3.11,<3.13"
+requires-python = ">=3.10, <3.13"
 dependencies = [
     "faiss-cpu>=1.13.1",
     "groq>=0.37.1",
@@ -24,4 +24,5 @@ dependencies = [
     "pytz>=2025.2",
     "livekit>=1.0.19",
     "livekit-plugins-dtln>=0.1.5",
+    "deepfilternet>=0.5.6",
 ]
