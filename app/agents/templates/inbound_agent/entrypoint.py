@@ -50,20 +50,6 @@ async def inbound_entrypoint(ctx: JobContext):
     setup_langfuse()  # Call this at the start of the session to ensure telemetry is set up
     inactivity_task: asyncio.Task | None = None
     egress_info=None
-
-    @session.on("user_state_changed")
-    def _user_state_changed(ev: UserStateChangedEvent):
-        if agent_config.conv_behaviour is None or agent_config.conv_behaviour.take_turn_after_silence_seconds is None or agent_config.conv_behaviour.take_turn_after_silence_seconds <= 0:
-            return
-        nonlocal inactivity_task
-        if ev.new_state == "away":
-            inactivity_task = asyncio.create_task(user_presence_task(agent_config.conv_behaviour.take_turn_after_silence_seconds))
-            return inactivity_task
-
-        # ev.new_state: listening, speaking, ..
-        if ev.new_state=="speaking" and inactivity_task is not None:
-            inactivity_task.cancel()
-
     
     async def wait_for_egress():
         for _ in range(10): # Try for 30 seconds
@@ -199,7 +185,19 @@ async def inbound_entrypoint(ctx: JobContext):
             )
         logger.info("Session closed due to user inactivity.")
         session.shutdown()
+        
+    @session.on("user_state_changed")
+    def _user_state_changed(ev: UserStateChangedEvent):
+        if agent_config.conv_behaviour is None or agent_config.conv_behaviour.take_turn_after_silence_seconds is None or agent_config.conv_behaviour.take_turn_after_silence_seconds <= 0:
+            return
+        nonlocal inactivity_task
+        if ev.new_state == "away":
+            inactivity_task = asyncio.create_task(user_presence_task(agent_config.conv_behaviour.take_turn_after_silence_seconds))
+            return inactivity_task
 
+        # ev.new_state: listening, speaking, ..
+        if ev.new_state=="speaking" and inactivity_task is not None:
+            inactivity_task.cancel()
 async def post_call_analysis(session: AgentSession):
     headers = {
         "Content-Type": "application/json",
