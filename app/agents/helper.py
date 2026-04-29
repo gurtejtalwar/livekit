@@ -184,7 +184,12 @@ async def load_agent_runtime_config(agent_id: str):
             outbound=outbound_first_message
         ),
         allow_recording=advanced_doc.privacy.get("audioRecording", True),
-        max_duration=advanced_doc.inboundTimeout.get("maxDuration", -1) if advanced_doc else None,
+        conv_behaviour=agents.ConversationBehaviour(
+            end_after_silence_seconds=advanced_doc.conversationalBehavior.get("endConversationAfterSilenceSeconds") if advanced_doc and advanced_doc.conversationalBehavior else None,
+            take_turn_after_silence_seconds=advanced_doc.conversationalBehavior.get("takeTurnAfterSilenceSeconds") if advanced_doc and advanced_doc.conversationalBehavior else None,
+            max_duration_seconds=advanced_doc.conversationalBehavior.get("maxConversationDurationSeconds") if advanced_doc and advanced_doc.conversationalBehavior else None,
+            max_duration_message=advanced_doc.conversationalBehavior.get("maxConversationDurationMessage") if advanced_doc and advanced_doc.conversationalBehavior else "I'm sorry, I've reached the maximum time limit for this call. Goodbye!"
+        ) if advanced_doc and advanced_doc.conversationalBehavior else None,
         human_phone_number=human_phone_number,
         outbound_trunk_id=agent.outboundTrunkId if agent.outboundTrunkId else ""
     )

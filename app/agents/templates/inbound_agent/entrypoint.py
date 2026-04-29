@@ -159,9 +159,9 @@ async def inbound_entrypoint(ctx: JobContext):
         await session.say(agent_config.greeting.inbound if "inbound" in  call_type else agent_config.greeting.outbound, allow_interruptions=True)
         # await session.generate_reply(instructions="Confirm the user is connected and greet them warmly.")
 
-    if agent_config.max_duration and agent_config.max_duration>0:
-        logger.info(f"Setting up hard timeout for {agent_config.max_duration} seconds")
-        asyncio.create_task(session_timeout_monitor(ctx, session, agent_config.max_duration))
+    if agent_config.conv_behaviour and agent_config.conv_behaviour.max_duration_seconds and agent_config.conv_behaviour.max_duration_seconds > 0:
+        logger.info(f"Setting up hard timeout for {agent_config.conv_behaviour.max_duration_seconds} seconds")
+        asyncio.create_task(session_timeout_monitor(ctx, session, agent_config.conv_behaviour.max_duration_seconds, agent_config.conv_behaviour.max_duration_message))
 
     async def log_usage():
         summary = usage_collector.get_summary()
@@ -225,12 +225,12 @@ async def post_call_analysis(session: AgentSession):
                                              )
 
 
-async def session_timeout_monitor(ctx: JobContext, session: AgentSession, timeout: int):
+async def session_timeout_monitor(ctx: JobContext, session: AgentSession, timeout: int, message: str):
     await asyncio.sleep(timeout)
     logger.warning(f"Hard timeout reached ({timeout}s). Shutting down.")
     try:
         # Give them a polite heads up before killing the call
-        await session.say("I'm sorry, I've reached the maximum time limit for this call. Goodbye!")
+        await session.say(message)
         # Give the TTS a moment to actually send the audio bytes
         await asyncio.sleep(2) 
     except Exception as e:

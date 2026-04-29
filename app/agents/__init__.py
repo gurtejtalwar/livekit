@@ -146,6 +146,12 @@ class AgentTimeout(BaseModel):
     delay_before_message: int = None
     filler_message: str = None
 
+class ConversationBehaviour(BaseModel):
+    end_after_silence_seconds: Optional[float] = None
+    take_turn_after_silence_seconds: Optional[float] = None
+    max_duration_seconds: Optional[float] = None
+    max_duration_message: Optional[str] = "I'm sorry, I've reached the maximum time limit for this call. Goodbye!"
+
 class AgentConfig(BaseModel):
     models: ModelConfig
     lk_plugins: LivekitPlugins = LivekitPlugins()
@@ -187,3 +193,4 @@ class AgentConfig(BaseModel):
     outbound_trunk_id: str
     human_phone_number: Optional[str] = None
     agent_timeout: Optional[AgentTimeout] = None
+    conv_behaviour: Optional[ConversationBehaviour] = None
