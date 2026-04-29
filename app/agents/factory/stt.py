@@ -20,6 +20,11 @@ class STT:
             # use_realtime=True,
             language_code=cfg.models.stt.language,
             model_id="scribe_v2_realtime",
+            server_vad=elevenlabs.stt.VADOptions(
+                vad_silence_threshold_secs=0.6,
+                vad_threshold=0.35,
+                min_speech_duration_ms=120,
+                min_silence_duration_ms=100
         ),
     }
 
