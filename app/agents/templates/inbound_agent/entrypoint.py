@@ -160,7 +160,8 @@ async def inbound_entrypoint(ctx: JobContext):
         # await session.generate_reply(instructions="Confirm the user is connected and greet them warmly.")
 
     if agent_config.max_duration and agent_config.max_duration>0:
-        asyncio.create_task(session_timeout_monitor(ctx, agent_config.max_duration))
+        logger.info(f"Setting up hard timeout for {agent_config.max_duration} seconds")
+        asyncio.create_task(session_timeout_monitor(ctx, session, agent_config.max_duration))
 
     async def log_usage():
         summary = usage_collector.get_summary()
@@ -224,12 +225,16 @@ async def post_call_analysis(session: AgentSession):
                                              )
 
 
-async def session_timeout_monitor(ctx: JobContext, timeout: int):
+async def session_timeout_monitor(ctx: JobContext, session: AgentSession, timeout: int):
     await asyncio.sleep(timeout)
     logger.warning(f"Hard timeout reached ({timeout}s). Shutting down.")
-    
-    # You can play a "Goodbye" TTS here if you have a reference to the session
-    # then kill the job.
+    try:
+        # Give them a polite heads up before killing the call
+        await session.say("I'm sorry, I've reached the maximum time limit for this call. Goodbye!")
+        # Give the TTS a moment to actually send the audio bytes
+        await asyncio.sleep(2) 
+    except Exception as e:
+        logger.error(f"Failed to say goodbye: {e}")
     ctx.shutdown(reason="Hard timeout Reached!")
 
 #TODO REDUNDANT
