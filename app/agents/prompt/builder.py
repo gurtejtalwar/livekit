@@ -56,14 +56,13 @@ class PromptBuilder:
     def build(self):
         return "\n\n".join([
             self._system_prompt(),
+            self._tool_context(),
             self._admin_goal(),
             self._user_context(),
             self._call_context(),
             self._callback_context(),
-            self._workflow_prompt(),
             self._workflow_prompt() if self.config.workflow_graph_json else "",
         ])  
-            # self._tool_context(),
     
     def _system_prompt(self):
         return inbound.lk_base_prompt.format(
@@ -163,10 +162,12 @@ class PromptBuilder:
         return f"The user's name is {lead_name}. Use it naturally."
         
     def _tool_context(self):
-        if "schedule_callback" in self.config.tools:
-            return "You may schedule callbacks if needed."
-
-        return ""
+        context = "Available Tools:\n"
+        if "call_back" in self.config.tools:
+            context += "- call_back: Call this tool only after confirming the call back time with the user and getting explicit agreement to be contacted later. Always ask the user when they want to be called back before using this tool.\n"
+        if "end_call" in self.config.tools:
+            context += "- end_call: Use this tool only when the user indicates they want to end the call. Do Not call this tool otherwise.\n"
+        return context
 
     def _workflow_prompt(self):
         return inbound.state_machine_block_template.format(state_machine_json=self.config.workflow_graph_json) if self.config.workflow_graph_json else ""
