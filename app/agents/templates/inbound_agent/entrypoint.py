@@ -51,17 +51,18 @@ async def inbound_entrypoint(ctx: JobContext):
     inactivity_task: asyncio.Task | None = None
     egress_info=None
 
-    # @session.on("user_state_changed")
-    # def _user_state_changed(ev: UserStateChangedEvent):
-    #     return None
-    #     nonlocal inactivity_task
-    #     if ev.new_state == "away":
-    #         inactivity_task = asyncio.create_task(user_presence_task())
-    #         return inactivity_task
+    @session.on("user_state_changed")
+    def _user_state_changed(ev: UserStateChangedEvent):
+        if agent_config.conv_behaviour is None or agent_config.conv_behaviour.take_turn_after_silence_seconds is None or agent_config.conv_behaviour.take_turn_after_silence_seconds <= 0:
+            return
+        nonlocal inactivity_task
+        if ev.new_state == "away":
+            inactivity_task = asyncio.create_task(user_presence_task(agent_config.conv_behaviour.take_turn_after_silence_seconds))
+            return inactivity_task
 
-    #     # ev.new_state: listening, speaking, ..
-    #     if ev.new_state=="speaking" and inactivity_task is not None:
-    #         inactivity_task.cancel()
+        # ev.new_state: listening, speaking, ..
+        if ev.new_state=="speaking" and inactivity_task is not None:
+            inactivity_task.cancel()
 
     
     async def wait_for_egress():
@@ -186,16 +187,16 @@ async def inbound_entrypoint(ctx: JobContext):
         # if handler:
         #     handler(ev.metrics)
 
-    async def user_presence_task():
+    async def user_presence_task(delay: float):
         # try to ping the user 3 times, if we get no answer, close the session
         logger.info("User presence task started due to inactivity.")
         for _ in range(3):
+            await asyncio.sleep(delay) # Wait for the user to respond
             await session.generate_reply(
                 instructions=(
                     "The user has been inactive. Politely check if the user is still present."
                 )
             )
-            await asyncio.sleep(10)
         logger.info("Session closed due to user inactivity.")
         session.shutdown()
 
