@@ -128,7 +128,7 @@ async def inbound_entrypoint(ctx: JobContext):
             room=ctx.room,
             agent=agent,
             room_input_options=RoomInputOptions(
-                noise_cancellation=dtln.noise_suppression() ,
+                noise_cancellation=dtln.noise_suppression(strength=settings.DEV.NOISE_SUPPRESSION_STRENGTH),
                 # noise_cancellation=noise_cancellation.BVCTelephony() ,
                 close_on_disconnect=False,
             ),

@@ -11,6 +11,8 @@ class DevSettings(BaseSettings):
     LK_AGENT_INIT_TIMEOUT: float = 30.0
     LK_AGENT_SHUTDOWN_TIMEOUT: float = 20.0
 
+    NOISE_SUPPRESSION_STRENGTH: float = 0.3
+
 class Settings(BaseSettings):
     ENVIRONMENT: Literal["prod", "dev", "qa", "stg", "local"]
     # LiveKit Configuration
