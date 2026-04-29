@@ -23,4 +23,5 @@ dependencies = [
     "phonenumbers>=9.0.24",
     "pytz>=2025.2",
     "livekit>=1.0.19",
+    "livekit-plugins-dtln>=0.1.5",
 ]
