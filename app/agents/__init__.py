@@ -149,6 +149,7 @@ class AgentTimeout(BaseModel):
 class ConversationBehaviour(BaseModel):
     end_after_silence_seconds: Optional[float] = None
     take_turn_after_silence_seconds: Optional[float] = None
+    num_retry_before_end: Optional[int] = None
     max_duration_seconds: Optional[float] = None
     max_duration_message: Optional[str] = "I'm sorry, I've reached the maximum time limit for this call. Goodbye!"
 

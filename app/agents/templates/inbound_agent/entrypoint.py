@@ -186,8 +186,9 @@ async def inbound_entrypoint(ctx: JobContext):
                 return False
             return (time.monotonic() - timer_start) >= max_silence
 
+        max_retries = agent_config.conv_behaviour.num_retry_before_end if agent_config.conv_behaviour and agent_config.conv_behaviour.num_retry_before_end is not None else 1
         while not is_timeout_reached():
-            for _ in range(3):
+            for _ in range(max_retries):
                 await asyncio.sleep(delay) # Wait for the user to respond
                 await session.generate_reply(
                     instructions=(
