@@ -106,6 +106,7 @@ async def inbound_entrypoint(ctx: JobContext):
     lead_context: LeadContext = await AgentFactory.get_lead_context(agent_id=agent_id,
                                                                     admin_id=admin_id,
                                                                     user_phone_number=lead_phone_number)
+    lead_context.data.agent_id = agent_config.agent_id
     lead_context.data.admin_id = agent_config.admin_id
     lead_context.data.user_id = agent_config.user_id
     lead_context.data.outbound_trunk_id = agent_config.human_phone_number
