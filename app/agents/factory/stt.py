@@ -17,7 +17,6 @@ class STT:
             model=cfg.models.stt.model,
         ),
         "elevenlabs": lambda cfg: elevenlabs.STT(
-            model=cfg.models.stt.model,
             use_realtime=True,
         ),
     }
