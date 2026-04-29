@@ -21,10 +21,10 @@ class STT:
             language_code=cfg.models.stt.language,
             model_id="scribe_v2_realtime",
             server_vad=elevenlabs.stt.VADOptions(
-                vad_silence_threshold_secs=0.6,
-                vad_threshold=0.35,
-                min_speech_duration_ms=120,
-                min_silence_duration_ms=100
+                vad_threshold=0.6,               # Less sensitive to noise
+                min_speech_duration_ms=400,      # Ignore brief sounds/pops
+                vad_silence_threshold_secs=0.9,   # Wait a beat to be sure
+                min_silence_duration_ms=500,     # Prevent rapid segmenting
             )
         ),
     }
