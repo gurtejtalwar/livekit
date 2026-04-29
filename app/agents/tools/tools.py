@@ -297,8 +297,28 @@ async def book_appointment(
     customFields: Optional[List[CustomField]] = None,
 ):
     """
-    Called only when the user confirms the date and time for booking a new appointment.
-    Do not call this tool without confirming with the user first. 
+    Create a new appointment booking.
+
+    Trigger this tool ONLY after:
+    - The user has explicitly confirmed BOTH date and time
+    - The appointment details are final and agreed upon
+
+    DO NOT call this tool if:
+    - The user is still exploring options
+    - Date or time is missing or uncertain
+    - The user has not explicitly confirmed
+
+    Before calling:
+    - Always confirm: "Should I go ahead and book this for you?"
+    - Ensure name, date, and time are clearly captured
+
+    Execution:
+    - Call immediately once confirmed
+    - Do NOT continue conversation after calling
+
+    If user changes details after confirmation:
+    - Do NOT call this tool again
+    - Restart the booking flow instead
     """
     payload = {
         "conversation_id": ctx.session.userdata.call_id,
@@ -315,7 +335,22 @@ async def book_appointment(
 @tool("cancel_appointment")
 async def cancel_appointment(booking_id: str):
     """
-    Cancel an existing appointment using booking ID.
+    Cancel an existing appointment.
+
+    Trigger this tool ONLY when:
+    - The user explicitly requests cancellation
+    - A valid booking_id is available
+
+    DO NOT call if:
+    - Booking ID is missing → ask for it
+    - User intent is unclear → confirm first
+
+    Before calling:
+    - Confirm cancellation intent ("Do you want me to cancel it?")
+
+    Execution:
+    - Call immediately after confirmation
+    - Do NOT continue conversation after calling
     """
     headers = {
     "x-agent-secret": settings.N1_ISC_API_KEY,
@@ -333,7 +368,23 @@ async def get_available_slots(
     ctx: RunContext,
 ):
     """
-    Get available appointment slots for a given agent and date.
+    Fetch available appointment slots for the user.
+
+    Trigger this tool when:
+    - The user asks for availability
+    - The user wants to book but no time is selected yet
+
+    DO:
+    - Use this as the FIRST step in booking flow
+    - Call as soon as city is known
+
+    DO NOT:
+    - Ask unnecessary follow-up questions before calling
+    - Delay this call if user intent is clear
+
+    After calling:
+    - Present slots clearly
+    - Guide user to choose one
     """
     params={
         "city": city,
@@ -377,7 +428,23 @@ async def reschedule_appointment(
     # customFields: dict | None = None
 ):
     """
-    Reschedule an existing appointment.
+    Reschedule an existing appointment to a new time.
+
+    Trigger this tool ONLY when:
+    - The user explicitly requests rescheduling
+    - booking_id is known
+    - New time is confirmed
+
+    DO NOT call if:
+    - Time is not finalized
+    - Booking ID is missing
+
+    Before calling:
+    - Confirm new time with the user
+
+    Execution:
+    - Call immediately after confirmation
+    - Do NOT continue conversation after calling
     """
     payload = {
         "booking_id": booking_id,
@@ -399,8 +466,23 @@ async def create_crm_lead(
     admin_id: str,
 ):
     """
-    Create a lead in the external CRM system.
-    Call this when a user wants to be contacted by sales or provides contact details.
+    Create a CRM lead for sales follow-up.
+
+    Trigger this tool when:
+    - User expresses interest in product/service
+    - User shares contact details willingly
+    - User wants to be contacted by sales
+
+    DO NOT call if:
+    - User is just asking general questions
+    - Contact intent is unclear
+
+    Before calling:
+    - Ensure first_name, email, phone, and company are collected
+
+    Execution:
+    - Call immediately once all details are available
+    - Do NOT continue conversation after calling
     """
     headers = {
     "x-agent-secret": settings.N1_ISC_API_KEY,
@@ -426,10 +508,22 @@ async def customer_support(
     """
     Create a customer support ticket.
 
-    This tool must ONLY be used after:
-    - The caller explicitly agrees to create a support ticket
-    - All required information has been collected
+    Trigger this tool ONLY when:
+    - User has a clear issue/problem
+    - User explicitly agrees to create a support ticket
 
+    STRICT RULE:
+    - NEVER call without explicit consent
+
+    Flow:
+    1. Identify issue
+    2. Ask for consent
+    3. Collect missing fields ONE AT A TIME
+    4. Call immediately once complete
+
+    DO NOT:
+    - Ask redundant questions
+    - Continue conversation after collecting all fields
     ----------------------------
     PARAMETER DEFINITIONS
     ----------------------------
@@ -499,12 +593,20 @@ async def sales_lead_generation(
     ctx: RunContext,
 ):
     """
-    Create a sales lead from the conversation.
+    Create a qualified sales lead.
 
-    This tool must ONLY be used after:
-    - The caller shows interest in being contacted by sales or provides relevant contact details
-    - All required information has been collected
+    Trigger this tool ONLY when:
+    - User shows clear buying interest OR
+    - User agrees to be contacted by sales
 
+    DO NOT call if:
+    - User is just browsing or asking general questions
+
+    Before calling:
+    - Ensure name, email, and company are collected
+
+    Execution:
+    - Call immediately once details are complete
     ----------------------------
     PARAMETER DEFINITIONS
     ----------------------------
@@ -568,7 +670,7 @@ async def feedback_review_collection(
     """
     Collect customer service feedback rating.
 
-    This tool must ONLY be used in outbound calls after:
+    This tool must ONLY be used after:
     - The customer is asked to rate their experience
     - A valid rating (1–5) is explicitly provided
 
