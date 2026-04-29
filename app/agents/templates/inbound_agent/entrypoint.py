@@ -241,7 +241,7 @@ async def session_timeout_monitor(ctx: JobContext, session: AgentSession, timeou
     logger.warning(f"Hard timeout reached ({timeout}s). Shutting down.")
     try:
         # Give them a polite heads up before killing the call
-        await session.say(message)
+        await session.say(message, allow_interruptions=False)
         # Give the TTS a moment to actually send the audio bytes
         await asyncio.sleep(2) 
     except Exception as e:
