@@ -154,6 +154,7 @@ async def load_agent_runtime_config(agent_id: str):
         agent_id=str(agent.id),
         admin_id=str(agent.adminId),
         agent_name=agent.agentName,
+        use_case=identity_doc.useCase,
         knowledge_base_id=identity_doc.resourceCentreId,
         system_prompt=system_prompt,
         workflow_graph_json=workflow_doc if workflow_doc else None,

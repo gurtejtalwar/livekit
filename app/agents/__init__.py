@@ -161,7 +161,7 @@ class AgentConfig(BaseModel):
     agent_id: str
     admin_id: str
     agent_name: str
-
+    use_case: Optional[str] = None
     campaign_id: str = None
     knowledge_base_id: Optional[str] = None
     workflow_graph_json: Optional[dict] = None
