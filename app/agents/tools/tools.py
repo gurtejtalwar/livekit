@@ -195,18 +195,22 @@ async def hangup_call(ctx: RunContext):
     ctx.wait_for_playout()
     job_ctx = get_job_context()
     if job_ctx:
+        logger.info("Cutting the line now...")
         try:
-            logger.info("Initiating graceful shutdown...")
-            
-            # 1. Close the session first to stop audio processing
-            # 2. Trigger the shutdown of the job
-            # This is what calls your 'add_shutdown_callback' tasks!x
-            await job_ctx.shutdown()
-            
+            # This triggers an immediate disconnect for the caller (PSTN/SIP/WebRTC)
+            await job_ctx.api.room.delete_room(
+                api.DeleteRoomRequest(room=job_ctx.room.name)
+            )
+            logger.info("Room deleted successfully.")
+            # We do NOT call job_ctx.shutdown() here. 
+            # Deleting the room will cause the agent to disconnect, 
+            # which automatically triggers your 'add_shutdown_callback' tasks.
         except Exception as e:
-            logger.error(f"Error while hanging up call: {e}")
-    else:
-        logger.error("No job context available to hangup call")
+            logger.error(f"Error during immediate hangup: {e}")
+            # Fallback to manual shutdown if API call fails
+            job_ctx.shutdown()
+
+    return "Call terminated."
 
 @tool("end_call")
 async def end_call(ctx: RunContext, reason: str = ""):
