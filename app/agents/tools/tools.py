@@ -271,10 +271,9 @@ async def detected_voicemail(ctx: RunContext, dummy: str=""):
 
     After triggering, the system will leave a voicemail message and hang up.
     """
-    # await ctx.session.generate_reply(
-    #     instructions="Leave a voicemail message letting the user know you'll call back later."
-    # )
-    await ctx.session.say("Hi, I tried reaching you. I'll call back later. Thanks!")
+    await ctx.session.generate_reply(
+        instructions="Leave a voicemail message letting the user know you'll call back later."
+    )
     await asyncio.sleep(0.5) # Add a natural gap to the end of the voicemail message
     await ctx.wait_for_playout()
     await hangup_call(ctx)
