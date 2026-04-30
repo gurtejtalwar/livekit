@@ -198,11 +198,9 @@ async def hangup_call(ctx: RunContext):
             logger.info("Initiating graceful shutdown...")
             
             # 1. Close the session first to stop audio processing
-            await ctx.session.aclose()
-            
             # 2. Trigger the shutdown of the job
             # This is what calls your 'add_shutdown_callback' tasks!x
-            job_ctx.shutdown()
+            await job_ctx.shutdown()
             
         except Exception as e:
             logger.error(f"Error while hanging up call: {e}")
