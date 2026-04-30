@@ -201,7 +201,7 @@ async def hangup_call(ctx: RunContext):
             await ctx.session.aclose()
             
             # 2. Trigger the shutdown of the job
-            # This is what calls your 'add_shutdown_callback' tasks!
+            # This is what calls your 'add_shutdown_callback' tasks!x
             job_ctx.shutdown()
             
         except Exception as e:
@@ -901,9 +901,9 @@ async def transfer_to_human(outbound_trunk: str, ctx: RunContext) -> None:
         "Please hold while I connect you to a human agent.", allow_interruptions=False
     )
     try:
-        assert SIP_TRUNK_ID is not None
-        assert SUPERVISOR_PHONE_NUMBER is not None
-
+        assert ctx.session.userdata.human_escalation_phone is not None
+        assert ctx.session.userdata.outbound_trunk_id is not None
+        logger.debug("Escalation Phone: %s, Outbound Trunk: %s",ctx.session.userdata.human_escalation_phone, ctx.session.userdata.outbound_trunk_id)
         result = await WarmTransferTask(
             target_phone_number=ctx.session.userdata.human_escalation_phone,
             sip_trunk_id=ctx.session.userdata.outbound_trunk_id,
