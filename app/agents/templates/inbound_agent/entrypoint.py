@@ -111,8 +111,8 @@ async def inbound_entrypoint(ctx: JobContext):
     lead_context.data.agent_id = agent_config.agent_id
     lead_context.data.admin_id = agent_config.admin_id
     lead_context.data.user_id = agent_config.user_id
-    lead_context.data.outbound_trunk_id = agent_config.human_phone_number
-    lead_context.data.human_escalation_phone = agent_config.outbound_trunk_id
+    lead_context.data.outbound_trunk_id = agent_config.outbound_trunk_id
+    lead_context.data.human_escalation_phone = agent_config.human_phone_number
     print(f"Lead Data: \n{lead_context.data}")
     print(f"Lead Summary: \n{lead_context.summary}")
     session = AgentSession(
