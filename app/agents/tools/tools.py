@@ -1,6 +1,7 @@
 import os
 import pickle
 import faiss
+from requests import session
 import torch
 import asyncio
 import logging
@@ -213,7 +214,7 @@ async def hangup_call(ctx: RunContext):
     return "Call terminated."
 
 @tool("end_call")
-async def end_call(ctx: RunContext, reason: str = ""):
+async def end_call(ctx: RunContext, sentiment: str = "neutral", reason: str = ""):
     """
     Gracefully terminates the ongoing voice call/session.
 
@@ -222,6 +223,7 @@ async def end_call(ctx: RunContext, reason: str = ""):
     ending the call (e.g., user request, task completion, escalation, etc.).
     
     Args:
+        sentiment (str): The final vibe of the user: 'positive', 'neutral', or 'negative'.
         reason (str, optional): A short description of why the call is being
             ended (e.g., "user requested", "task completed", "no response").
             Defaults to an empty string.
@@ -235,25 +237,32 @@ async def end_call(ctx: RunContext, reason: str = ""):
         None
     """
     session = ctx.session
+    use_case = session.userdata.get("agent_use_case", "general")
+    # 1. Define dynamic instructions based on Use Case and Sentiment
+    if use_case == "outbound_sales":
+        if sentiment == "positive":
+            instructions = "The user is happy! End with high energy, thank them for their time, and wish them a fantastic day."
+        elif sentiment == "neutral":
+            instructions = "The user is indifferent. Try to 'hook' them by mentioning you'll follow up or suggest a better time to talk later, then end politely."
+        else: # Negative
+            # 🛑 CRITICAL: We pivot to feedback here and DO NOT hang up.
+            speech = await session.generate_reply(
+                instructions="The user is unhappy. Apologize sincerely for any inconvenience and ask if they'd be willing to provide a quick 1-5 rating so we can improve. DO NOT hang up yet."
+            )
+            return "Pivoting to feedback collection due to negative sentiment."
+    else:
+        # Default behavior for non-sales agents
+        instructions = "Provide a standard polite closing message."
 
-    # 🗣️ Step 1: speak
-    # speech = await session.say(
-    #     "Alright, thanks for your time. Have a great day!"
-    # )
-    speech = await session.generate_reply(instructions="Leave a closing message for the user and end the call. Please NOTE you are already inside a tool execution, so do not respond with a tool call since that will be an error.")
-    logger.info(
-        "TOOL: END CALL Message: %s",
-        speech.chat_items[-1].content if speech.chat_items else "No chat items"
-    )
-    # 🧠 Step 2: wait OR get interrupted
-    # await speech.wait_if_not_interrupted([])
+    # 2. Execute the speech for Positive/Neutral/General
+    speech = await session.generate_reply(instructions=instructions)
+    await speech.wait_for_playout()  # Ensure the message is played before hanging up
+    # # 3. Wait for the agent to finish talking
+    # await speech.wait_if_not_interrupted()
 
-    # # ❌ Step 3: user interrupted → abort ending
-    # if speech.interrupted:
-    #     logger.info("Call end interrupted by user, aborting call termination")
-    #     return
-
-    # ✅ Step 4: safe to end
+    # # 4. Only hang up if it wasn't a 'negative' pivot
+    # if not speech.interrupted:
+    #     logger.info(f"Closing {use_case} call with {sentiment} sentiment.")
     await hangup_call(ctx)
 
 @tool("detected_voicemail")

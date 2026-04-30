@@ -160,13 +160,33 @@ class PromptBuilder:
             return ""
 
         return f"The user's name is {lead_name}. Use it naturally."
-        
+            
     def _tool_context(self):
-        context = "Available Tools:\n"
+        context = "### Available Tools and Protocols\n"
+        
         if "call_back" in self.config.tools:
-            context += "- call_back: Call this tool only after confirming the call back time with the user and getting explicit agreement to be contacted later. Always ask the user when they want to be called back before using this tool.\n"
+            context += (
+                "- call_back: Use ONLY after confirming a specific date/time with the user and getting explicit "
+                "agreement to be contacted later. Always ask for their availability first.\n"
+            )
+            
         if "end_call" in self.config.tools:
-            context += "- end_call: Use this tool only when the user indicates they want to end the call. Do Not call this tool otherwise. Unless the user explicitly requests to end the call, do not use this tool, instead try to schedule a callback by first asking user their availability.\n"
+            context += (
+                "- end_call: This tool terminates the session based on user sentiment. You MUST provide a 'sentiment' parameter:\n"
+                "    * sentiment='positive': Use when the user is friendly, interested, or satisfied. The agent will close with high energy.\n"
+                "    * sentiment='neutral': Use for non-committal or busy users. Try to 'hook' them (e.g., 'I'll send that info over') "
+                "or suggest a callback before finally concluding.\n"
+                "    * sentiment='negative': Use when the user is annoyed or rejecting the offer. IMPORTANT: This will NOT "
+                "disconnect the line immediately. It triggers an apology and a request for feedback. You must then wait for the "
+                "user's rating and use 'feedback_review_collection' before calling 'end_call' again to finally hang up.\n"
+            )
+
+        if "feedback_review_collection" in self.config.tools:
+            context += (
+                "- feedback_review_collection: Use this tool ONLY after the user provides a numeric rating (1-5). "
+                "This tool is also triggered after a 'negative' sentiment end_call or if the user explicitly offers a review.\n"
+            )
+            
         return context
 
     def _workflow_prompt(self):
