@@ -192,6 +192,7 @@ async def get_current_time(input: str) -> str:
 
 async def hangup_call(ctx: RunContext):
     # Ensure any pending agent speech is finished before killing the room
+    ctx.wait_for_playout()
     job_ctx = get_job_context()
     if job_ctx:
         try:
@@ -232,9 +233,10 @@ async def end_call(ctx: RunContext, reason: str = ""):
     session = ctx.session
 
     # 🗣️ Step 1: speak
-    speech = await session.say(
-        "Alright, thanks for your time. Have a great day!"
-    )
+    # speech = await session.say(
+    #     "Alright, thanks for your time. Have a great day!"
+    # )
+    speech = await session.generate_reply("Leave a closing message for the user and end the call. Please NOTE you are already inside a tool execution, so do not respond with a tool call since that will be an error.")
     logger.info(
         "TOOL: END CALL Message: %s",
         speech.chat_items[-1].content if speech.chat_items else "No chat items"
@@ -272,7 +274,7 @@ async def detected_voicemail(ctx: RunContext, dummy: str=""):
     After triggering, the system will leave a voicemail message and hang up.
     """
     await ctx.session.generate_reply(
-        instructions="Leave a voicemail message letting the user know you'll call back later."
+        instructions="Leave a voicemail message letting the user know who you are and why you called and that you will call back later. Please NOTE you are already inside a tool execution, so do not respond with a tool call since that will be an error."
     )
     await asyncio.sleep(0.5) # Add a natural gap to the end of the voicemail message
     await ctx.wait_for_playout()
