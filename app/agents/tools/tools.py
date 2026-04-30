@@ -236,7 +236,7 @@ async def end_call(ctx: RunContext, reason: str = ""):
     # speech = await session.say(
     #     "Alright, thanks for your time. Have a great day!"
     # )
-    speech = await session.generate_reply("Leave a closing message for the user and end the call. Please NOTE you are already inside a tool execution, so do not respond with a tool call since that will be an error.")
+    speech = await session.generate_reply(instructions="Leave a closing message for the user and end the call. Please NOTE you are already inside a tool execution, so do not respond with a tool call since that will be an error.")
     logger.info(
         "TOOL: END CALL Message: %s",
         speech.chat_items[-1].content if speech.chat_items else "No chat items"
