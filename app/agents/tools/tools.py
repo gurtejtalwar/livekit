@@ -1,8 +1,7 @@
 import os
 import pickle
 import faiss
-from requests import session
-import torch
+# import torch
 import asyncio
 import logging
 import gc
@@ -13,8 +12,9 @@ from datetime import datetime, timezone
 from dotenv import load_dotenv
 from typing import Optional, List, Literal
 from pydantic import BaseModel
-from optimum.onnxruntime import ORTModelForFeatureExtraction
-from transformers import AutoTokenizer
+# from optimum.onnxruntime import ORTModelForFeatureExtraction
+# from onnxruntime import SessionOptions
+# from transformers import AutoTokenizer
 
 from livekit import api
 from livekit.agents import llm, get_job_context, RunContext
@@ -139,20 +139,20 @@ def load_knowledge_base(resource_centre_id: str) -> KnowledgeBase:
     KB_CACHE[resource_centre_id] = kb
     return kb
 
-def make_ask_knowledge_base_tool(kb: KnowledgeBase):
+# def make_ask_knowledge_base_tool(kb: KnowledgeBase):
 
-    @tool("ask_knowledge_base")
-    async def ask_knowledge_base(question: str):
-        with Timer("KB Tool Total"):
-            with Timer("Embed Query"):
-                q_emb = embed(question)
+#     @tool("ask_knowledge_base")
+#     async def ask_knowledge_base(question: str):
+#         with Timer("KB Tool Total"):
+#             with Timer("Embed Query"):
+#                 q_emb = embed(question)
 
-            with Timer("FAISS Search"):
-                results = kb.search(q_emb, k=3)
+#             with Timer("FAISS Search"):
+#                 results = kb.search(q_emb, k=3)
 
-            return "\n".join(results)
+#             return "\n".join(results)
 
-    return ask_knowledge_base
+#     return ask_knowledge_base
 
 #TODO Pre call tasks
 def get_faiss_index_and_chunks():
@@ -164,25 +164,25 @@ def get_faiss_index_and_chunks():
         KB_CACHE[kb]=True
     return index, chunks
 
-def embed(text):
-        inputs = tokenizer(text, return_tensors="pt", padding=True, truncation=True)
-        with torch.no_grad():
-            outputs = model(**inputs)
-        return outputs.last_hidden_state.mean(dim=1).numpy()
+# def embed(text):
+#         inputs = tokenizer(text, return_tensors="pt", padding=True, truncation=True)
+#         with torch.no_grad():
+#             outputs = model(**inputs)
+#         return outputs.last_hidden_state.mean(dim=1).numpy()
 
 #TODO Deficit
 KB_CACHE={}
 MODEL_CACHE={}
 kb = "test"
 model = "test"
-with Timer("Load Embedding Model"):
+# with Timer("Load Embedding Model"):
 
-    if model not in MODEL_CACHE:
-        tokenizer = AutoTokenizer.from_pretrained("sentence-transformers/all-MiniLM-L6-v2", local_files_only=True)
-        model = ORTModelForFeatureExtraction.from_pretrained(
-            "sentence-transformers/all-MiniLM-L6-v2",
-        )
-        MODEL_CACHE[model]=True
+#     if model not in MODEL_CACHE:
+#         model_path = os.path.join(os.getcwd(), "local_model_weights")
+
+#         tokenizer = AutoTokenizer.from_pretrained(model_path, local_files_only=True)
+#         model = ORTModelForFeatureExtraction.from_pretrained(model_path, local_files_only=True)
+#         MODEL_CACHE[model]=True
 
 
 @tool("get_current_time")
@@ -237,7 +237,7 @@ async def end_call(ctx: RunContext, sentiment: str = "neutral", reason: str = ""
         None
     """
     session = ctx.session
-    use_case = session.userdata.get("agent_use_case", "general")
+    use_case = session.userdata.agent_use_case
     # 1. Define dynamic instructions based on Use Case and Sentiment
     if use_case == "outbound_sales":
         if sentiment == "positive":

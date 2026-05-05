@@ -1,21 +1,17 @@
 import logging
-from dataclasses import dataclass, field
 from phonenumbers import timezone
 from datetime import datetime
 import pytz
 import phonenumbers
 
-from livekit.agents import Agent, llm, stt, tts
-from livekit.plugins import deepgram, cartesia, groq, openai, elevenlabs, assemblyai, silero
-from livekit.plugins.turn_detector.english import EnglishModel
+from livekit.agents import Agent, llm
+# from livekit.plugins.turn_detector.english import EnglishModel
 from livekit.plugins.turn_detector.multilingual import MultilingualModel
 
+from app.agents.factory import stt
 from app.agents.prompt.builder import PromptBuilder
 from app.agents import AgentConfig, LeadContext
-from app.agents.prompt import inbound as inbound_prompt
 from app.agents.tools import resolve_tools
-from app.models import call_models
-from app.shared import schemas
 from app.agents import helper
 from app.agents import factory
 from app.agents.workflow_manager import build_and_run_workflow
@@ -47,12 +43,12 @@ cartesia_language_codes = {
     "de": "de-DE",
 }
 
-vad = silero.VAD.load(
-    activation_threshold=0.6,
-    prefix_padding_duration=0.5,
-    min_silence_duration=1,
-    sample_rate=8000,
-)
+# vad = silero.VAD.load(
+#     activation_threshold=0.6,
+#     prefix_padding_duration=0.5,
+#     min_silence_duration=1,
+#     sample_rate=8000,
+# )
 
 class InboundAgent(Agent):
     def __init__(self,
@@ -64,7 +60,7 @@ class InboundAgent(Agent):
             tts=config.lk_plugins.lk_tts,
             tools=tools,
             instructions=config.system_prompt,
-            turn_detection=EnglishModel(),
+            # turn_detection=EnglishModel(),
             allow_interruptions=config.allow_interruptions,
             min_endpointing_delay=0.2,
             max_endpointing_delay=3,
@@ -219,6 +215,8 @@ class AgentFactory:
         cfg.lk_plugins.lk_stt = factory.STT.create(cfg)
         cfg.lk_plugins.lk_llm = factory.LLM.create(cfg)
         cfg.lk_plugins.lk_tts = factory.TTS.create(cfg)
+        if cfg.lk_plugins.lk_stt.capabilities.aligned_transcript:
+            print("This STT model supports aligned transcripts.")
         instructions = PromptBuilder(
             config=cfg,
             lead=lead_ctx,

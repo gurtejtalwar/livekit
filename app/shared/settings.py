@@ -23,7 +23,7 @@ class Settings(BaseSettings):
     # AWS Config
     AWS_REGION: str
     AWS_ACCESS_KEY: str
-    AWS_SECRET_KEY: str
+    AWS_SECRET_ACCESS_KEY: str
     AWS_BUCKET_NAME_RECORDING: str
     AWS_BUCKET_ENDPOINT_RECORDING: str
 

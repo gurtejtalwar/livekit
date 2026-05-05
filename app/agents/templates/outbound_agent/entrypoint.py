@@ -207,7 +207,7 @@ async def outbound_entrypoint(ctx: JobContext):
     # the following uses GPT-4o, Deepgram and Cartesia
     session = AgentSession(
         turn_detection=EnglishModel(),
-        vad=silero.VAD.load(),
+        # vad=silero.VAD.load(),
         stt=deepgram.STT(),
         # you can also use OpenAI's TTS with openai.TTS()
         tts=cartesia.TTS(),

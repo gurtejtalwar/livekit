@@ -1,0 +1,81 @@
+{
+  "start_state": "Greeting",
+  "mode": "rigid",
+  "global_nodes": ["Transfer_Call", "End_Call"],
+  "states": {
+    "Greeting": {
+      "type": "conversation",
+      "prompt": {
+        "instructions": "Greet the caller, introduce the assistant, and ask for the caller's full name."
+      },
+      "transitions": {
+        "got_name": "Collect_Reason",
+        "no_response": "Transfer_Call"
+      },
+      "settings": {}
+    },
+    "Collect_Reason": {
+      "type": "conversation",
+      "prompt": {
+        "instructions": "Ask the reason for the appointment and collect preferred date and time."
+      },
+      "transitions": {
+        "details_collected": "Check_Availability",
+        "unclear": "Transfer_Call"
+      },
+      "settings": {}
+    },
+    "Check_Availability": {
+      "type": "conversation",
+      "prompt": {
+        "instructions": "Confirm requested slot and use booking tool to check availability and create appointment."
+      },
+      "transitions": {
+        "slot_available": "Confirm_Booking",
+        "slot_unavailable": "Offer_Alternative",
+        "tool_failed": "Transfer_Call"
+      },
+      "settings": {
+        "tools": ["book_appointment"]
+      }
+    },
+    "Offer_Alternative": {
+      "type": "conversation",
+      "prompt": {
+        "instructions": "Inform that requested slot is unavailable and offer one or two nearby alternatives."
+      },
+      "transitions": {
+        "alternative_selected": "Confirm_Booking",
+        "no_alternative_accepted": "Transfer_Call"
+      },
+      "settings": {}
+    },
+    "Confirm_Booking": {
+      "type": "conversation",
+      "prompt": {
+        "instructions": "Confirm appointment details clearly and ask whether any additional help is needed."
+      },
+      "transitions": {
+        "done": "End_Call",
+        "more_help": "Transfer_Call"
+      },
+      "settings": {}
+    },
+    "Transfer_Call": {
+      "type": "transfer",
+      "prompt": {
+        "instructions": "Inform the caller that the call is being transferred to a human support specialist."
+      },
+      "transitions": {},
+      "settings": {}
+    },
+    "End_Call": {
+      "type": "end_call",
+      "prompt": {
+        "instructions": "Close the conversation politely after confirming the booking outcome."
+      },
+      "transitions": {},
+      "settings": {}
+    }
+  }
+}

@@ -35,6 +35,7 @@ class LeadData:
     agent_id: str = ""
     admin_id: str = ""
     phone: str = ""
+    use_case: str = ""
     
     user_timezone: str = ""
     user_current_time: str = ""

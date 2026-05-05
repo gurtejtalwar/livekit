@@ -10,10 +10,12 @@ ENV PYTHONUNBUFFERED=1 \
 WORKDIR /app
 
 # 3. System Dependencies (Essential for Media/WebRTC)
-RUN apt-get update && apt-get install -y --no-install-recommends \
-    build-essential \
-    ffmpeg \
-    && rm -rf /var/lib/apt/lists/*
+RUN apt-get update && apt-get install -y \
+    gcc \
+    g++ \
+    python3-dev \
+  && rm -rf /var/lib/apt/lists/*
+
 
 # 4. Install Dependencies
 # Copying specifically from the root
@@ -27,7 +29,6 @@ RUN pip install --upgrade pip && \
 # 5. Copy Application Code
 # This copies the 'app/' folder and '.env' into /app_root
 COPY . .
-
-# 6. Execution
-# Replace 'app/main.py' with the actual path to your entry point script
-CMD ["python", "server.py", "dev"]
+COPY entrypoint.sh .
+RUN chmod +x entrypoint.sh
+CMD ["./entrypoint.sh"]

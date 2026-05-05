@@ -7,14 +7,16 @@ import json
 from dataclasses import dataclass
 
 from livekit import api
-from livekit.plugins import noise_cancellation
-from livekit.plugins import dtln
+from livekit.plugins import noise_cancellation, turn_detector
+from livekit.plugins.turn_detector.multilingual import MultilingualModel 
+from livekit.plugins import aws
 from livekit.agents import (metrics,
                             function_tool,
                             JobContext,
                             AutoSubscribe,
                             AgentServer,
                             AgentSession,
+                            TurnHandlingOptions,
                             UserStateChangedEvent,
                             MetricsCollectedEvent,
                             RoomInputOptions)
@@ -25,9 +27,9 @@ from app.models import call_models
 from app.shared import schemas
 from app.shared.settings import get_settings
 from app.utils.requests import _request
-from app.utils import deepfilter
 from app.utils.timer import Timer
 
+aws.AWSPlugin()
 settings = get_settings()
 logger = logging.getLogger(__name__)
 
@@ -50,7 +52,7 @@ class BGTasks:
 
 @inbound_server.rtc_session(agent_name="inbound-agent")
 async def inbound_entrypoint(ctx: JobContext):
-    setup_langfuse()  # Call this at the start of the session to ensure telemetry is set up
+    # setup_langfuse()  # Call this at the start of the session to ensure telemetry is set up
     inactivity_task: asyncio.Task | None = None
     egress_info=None
     
@@ -78,7 +80,11 @@ async def inbound_entrypoint(ctx: JobContext):
     await ctx.connect(auto_subscribe=AutoSubscribe.AUDIO_ONLY)
 
     # Example: resolve from headers / room metadata / API
-    metadata = json.loads(ctx.job.metadata)
+    if settings.ENVIRONMENT == "local":
+        metadata = json.loads(ctx.job.metadata)
+    else:
+        metadata = ctx.job.metadata
+
     agent_id = metadata["agent_id"]
     admin_id = metadata["admin_id"] 
     lead_phone_number = None 
@@ -98,8 +104,8 @@ async def inbound_entrypoint(ctx: JobContext):
     #~~~~~~~~##~~~~~~~~#
 
     # Start Egress Service if recording allowed
-    if agent_config.allow_recording is True:
-        egress_info = await start_audio_only_egress(ctx)
+    # if agent_config.allow_recording is True:
+    #     egress_info = await start_audio_only_egress(ctx) #TODO Cloud 
 
     if "outbound" in call_type:
         lead_phone_number = metadata["phone_number"] 
@@ -111,11 +117,18 @@ async def inbound_entrypoint(ctx: JobContext):
     lead_context.data.agent_id = agent_config.agent_id
     lead_context.data.admin_id = agent_config.admin_id
     lead_context.data.user_id = agent_config.user_id
+    lead_context.data.use_case = agent_config.use_case
     lead_context.data.outbound_trunk_id = agent_config.outbound_trunk_id
     lead_context.data.human_escalation_phone = agent_config.human_phone_number
     print(f"Lead Data: \n{lead_context.data}")
     print(f"Lead Summary: \n{lead_context.summary}")
     session = AgentSession(
+        turn_handling=TurnHandlingOptions(
+            turn_detection=MultilingualModel(),
+            interruption={
+                "mode": "adaptive",
+            }
+        ),
         preemptive_generation=True, 
         userdata=lead_context.data,
         user_away_timeout=10)
@@ -308,7 +321,7 @@ async def start_audio_only_egress(ctx: JobContext):
                 filepath=f"recordings/{uuid.uuid4()}",
                 s3=api.S3Upload(
                     access_key=settings.AWS_ACCESS_KEY,
-                    secret=settings.AWS_SECRET_KEY,
+                    secret=settings.AWS_SECRET_ACCESS_KEY,
                     bucket=settings.AWS_BUCKET_NAME_RECORDING,
                     region=settings.AWS_REGION
                 )
@@ -328,32 +341,33 @@ async def start_audio_only_egress(ctx: JobContext):
             logger.exception("Failed to start egress: %s", e)
 
 
-#TODO MOVE
-import os
-import base64
-from opentelemetry import trace  # Import the global trace entry point
-from livekit.agents.telemetry import set_tracer_provider as set_livekit_tracer
+#TODO MOVE 
+ #TODO: add telemetry on settings.Environment, plan decorator
+# import os
+# import base64
+# from opentelemetry import trace  # Import the global trace entry point
+# from livekit.agents.telemetry import set_tracer_provider as set_livekit_tracer
 
-def setup_langfuse(
-    host: str | None = None, public_key: str | None = None, secret_key: str | None = None
-):
-    from opentelemetry.exporter.otlp.proto.http.trace_exporter import OTLPSpanExporter
-    from opentelemetry.sdk.trace import TracerProvider
-    from opentelemetry.sdk.trace.export import BatchSpanProcessor
+# def setup_langfuse(
+#     host: str | None = None, public_key: str | None = None, secret_key: str | None = None
+# ):
+#     from opentelemetry.exporter.otlp.proto.http.trace_exporter import OTLPSpanExporter
+#     from opentelemetry.sdk.trace import TracerProvider
+#     from opentelemetry.sdk.trace.export import BatchSpanProcessor
 
-    public_key = public_key or settings.LANGFUSE_PUBLIC_KEY
-    secret_key = secret_key or settings.LANGFUSE_SECRET_KEY
-    host = host or settings.LANGFUSE_HOST
+#     public_key = public_key or settings.LANGFUSE_PUBLIC_KEY
+#     secret_key = secret_key or settings.LANGFUSE_SECRET_KEY
+#     host = host or settings.LANGFUSE_HOST
 
-    if not public_key or not secret_key or not host:
-        raise ValueError("LANGFUSE_PUBLIC_KEY, LANGFUSE_SECRET_KEY, and LANGFUSE_HOST must be set")
+#     if not public_key or not secret_key or not host:
+#         raise ValueError("LANGFUSE_PUBLIC_KEY, LANGFUSE_SECRET_KEY, and LANGFUSE_HOST must be set")
 
-    langfuse_auth = base64.b64encode(f"{public_key}:{secret_key}".encode()).decode()
-    os.environ["OTEL_EXPORTER_OTLP_ENDPOINT"] = f"{host.rstrip('/')}/api/public/otel"
-    os.environ["OTEL_EXPORTER_OTLP_HEADERS"] = f"Authorization=Basic {langfuse_auth}"
+#     langfuse_auth = base64.b64encode(f"{public_key}:{secret_key}".encode()).decode()
+#     os.environ["OTEL_EXPORTER_OTLP_ENDPOINT"] = f"{host.rstrip('/')}/api/public/otel"
+#     os.environ["OTEL_EXPORTER_OTLP_HEADERS"] = f"Authorization=Basic {langfuse_auth}"
 
-    trace_provider = TracerProvider()
-    trace_provider.add_span_processor(BatchSpanProcessor(OTLPSpanExporter()))
+#     trace_provider = TracerProvider()
+#     trace_provider.add_span_processor(BatchSpanProcessor(OTLPSpanExporter()))
     
-    set_livekit_tracer(trace_provider)
-    trace.set_tracer_provider(trace_provider)
+#     set_livekit_tracer(trace_provider)
+#     trace.set_tracer_provider(trace_provider)

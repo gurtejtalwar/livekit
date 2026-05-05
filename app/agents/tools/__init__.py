@@ -6,7 +6,7 @@ from .utilities import (
 )
 from .tools import (
     end_call,
-    make_ask_knowledge_base_tool, 
+    # make_ask_knowledge_base_tool, 
     load_knowledge_base,
     get_current_time,
     book_appointment,
@@ -41,8 +41,8 @@ class ToolContext:
     agent_id: str
     kb: object | None = None
 
-def resolve_ask_knowledge_base(tool_ctx: ToolContext):
-    return make_ask_knowledge_base_tool(tool_ctx.kb)
+# def resolve_ask_knowledge_base(tool_ctx: ToolContext):
+#     return make_ask_knowledge_base_tool(tool_ctx.kb)
 
 def resolve_get_current_time(tool_ctx: ToolContext):
     return get_current_time
@@ -115,7 +115,7 @@ UTILITY_TOOL_REGISTRY = {
 }
 
 TOOL_REGISTRY = {
-    "ask_knowledge_base": resolve_ask_knowledge_base,
+    # "ask_knowledge_base": resolve_ask_knowledge_base,
     "get_current_time": resolve_get_current_time,
     "book_appointment": resolve_book_appointment,
     "cancel_appointment": resolve_cancel_appointment,
