@@ -25,7 +25,7 @@ from livekit.agents import llm, AgentSession
 from livekit.agents.metrics import UsageSummary
 
 from app.shared import schemas
-from app.agents import AgentConfig, CallDetails
+from app.agents import AgentConfig, CallDetails, LeadSummary
 from app.models import db
 
 
@@ -215,6 +215,7 @@ class VoiceCallDetails(Document):
     user_id = ObjectIdField()
 
     agent_id = ObjectIdField()
+    campaign_id = ObjectIdField()
     agent_name = StringField()
     room_name = StringField()
     call_type = StringField()
@@ -242,22 +243,38 @@ class VoiceCallDetails(Document):
     created_at = DateTimeField(default=datetime.utcnow)
     updated_at = DateTimeField(default=datetime.utcnow)
 
-# class VoiceCallLeads(Document):
-#     meta = {
-#         "collection": "voice-call-leads",
-#         "indexes": [
-#             "user_id",
-#         ],
-#     }
+class LeadsSummary(EmbeddedDocument):
+    meta = {
+        "collection": "leads_summary",
+        "indexes": [
+            "user_id",
+        ],
+    }
 
-#     user_id = ObjectId()
+    user_id = ObjectIdField(required=True)
+    agent_id = ObjectIdField()
+    summary = StringField()
 
-#     phone = StringField() #TODO QUERY Need list?
-#     name = StringField()
-#     email = EmailField()
+class VoiceCallLeads(Document):
+    meta = {
+        "collection": "voice-call-leads",
+        "indexes": [
+            "user_id",
+        ],
+    }
 
-#     overall_summary = StringField()
+    user_id = ObjectIdField(required=True)
+    admin_id = ObjectIdField()
+    last_call_id = ObjectIdField()
 
+    phone = StringField()  #TODO QUERY Need list?
+    first_name = StringField()
+    last_name = StringField()
+    email = EmailField()
+
+    agents_summary = EmbeddedDocumentListField(LeadsSummary)
+    overall_summary = StringField()
+    metadata = DictField()
 
 async def on_call_ended(
     session: AgentSession,
@@ -430,34 +447,35 @@ async def save_usage_summary(call_id: str, summary: UsageSummary):
     try:
         call_details: VoiceCallDetails = VoiceCallDetails.objects.get(call_id=call_id)
     except DoesNotExist:
-        logger.warning(f"CallDetails not found for call_id {call_id} when saving usage summary")
+        logger.warning(f"Call Details not found for call_id {call_id} when saving usage summary")
         return
+    try:
+        call_details.lk_metadata.usage = UsageSummaryEmbedded(
+            llm_prompt_tokens=summary.llm_prompt_tokens,
+            llm_prompt_cached_tokens=summary.llm_prompt_cached_tokens,
 
-    call_details.lk_metadata.usage = UsageSummaryEmbedded(
-        llm_prompt_tokens=summary.llm_prompt_tokens,
-        llm_prompt_cached_tokens=summary.llm_prompt_cached_tokens,
+            llm_input_audio_tokens=summary.llm_input_audio_tokens,
+            llm_input_cached_audio_tokens=summary.llm_input_cached_audio_tokens,
 
-        llm_input_audio_tokens=summary.llm_input_audio_tokens,
-        llm_input_cached_audio_tokens=summary.llm_input_cached_audio_tokens,
+            llm_input_text_tokens=summary.llm_input_text_tokens,
+            llm_input_cached_text_tokens=summary.llm_input_cached_text_tokens,
 
-        llm_input_text_tokens=summary.llm_input_text_tokens,
-        llm_input_cached_text_tokens=summary.llm_input_cached_text_tokens,
+            llm_input_image_tokens=summary.llm_input_image_tokens,
+            llm_input_cached_image_tokens=summary.llm_input_cached_image_tokens,
 
-        llm_input_image_tokens=summary.llm_input_image_tokens,
-        llm_input_cached_image_tokens=summary.llm_input_cached_image_tokens,
+            llm_completion_tokens=summary.llm_completion_tokens,
 
-        llm_completion_tokens=summary.llm_completion_tokens,
+            llm_output_audio_tokens=summary.llm_output_audio_tokens,
+            llm_output_image_tokens=summary.llm_output_image_tokens,
+            llm_output_text_tokens=summary.llm_output_text_tokens,
 
-        llm_output_audio_tokens=summary.llm_output_audio_tokens,
-        llm_output_image_tokens=summary.llm_output_image_tokens,
-        llm_output_text_tokens=summary.llm_output_text_tokens,
-
-        tts_characters_count=summary.tts_characters_count,
-        tts_audio_duration=summary.tts_audio_duration,
-        stt_audio_duration=summary.stt_audio_duration,
-    )
-
-    call_details.save()
+            tts_characters_count=summary.tts_characters_count,
+            tts_audio_duration=summary.tts_audio_duration,
+            stt_audio_duration=summary.stt_audio_duration,
+        )
+        call_details.save()
+    except Exception as e:
+        logger.error("Error saving usage summary:\n %s", e)
 
 async def save_analysis(call_id: str, analysis: schemas.PostCallAnalysis):
     try:
@@ -470,7 +488,7 @@ async def save_analysis(call_id: str, analysis: schemas.PostCallAnalysis):
     call_details.save()
 
 
-async def inbound_handler(config: AgentConfig, session: AgentSession):
+async def sip_handler(config: AgentConfig, session: AgentSession):
     participant = next(iter(session._room_io._room._remote_participants.values()), None)
     sip_attrs = participant.attributes if participant else None
     call = VoiceCalls(
@@ -490,6 +508,7 @@ async def inbound_handler(config: AgentConfig, session: AgentSession):
         call_id=str(call.id),                 # internal linkage
         user_id=config.user_id,
         agent_id=config.agent_id,
+        campaign_id=config.campaign_id,
         agent_name=config.agent_name,
         room_name=session.room_io.room.name if session.room_io and session.room_io.room else None,
         call_type=config.call_type,
@@ -535,3 +554,123 @@ async def test_inbound_handler(config: AgentConfig, session: AgentSession):
     session.userdata.call_id = str(call.id)
     return call.id
 
+
+
+async def upsert_voice_call_lead(
+    *,
+    user_id: str,
+    admin_id: str,
+    agent_id: str,
+    phone: str | None = None,
+    last_call_id: str | None = None,
+    first_name: str | None = None,
+    last_name: str | None = None,
+    email: str | None = None,
+    metadata: dict | None = None,
+    agent_summary: str | None = None,
+    overall_summary: str | None = None,
+):
+    """
+    Upserts a voice call lead using phone as unique identifier.
+    Updates only provided fields.
+    """
+
+    lead: VoiceCallLeads = VoiceCallLeads.objects(phone=phone).first()
+
+    if not lead:
+        lead:VoiceCallLeads = VoiceCallLeads(
+            user_id=ObjectId(user_id),
+            admin_id=ObjectId(admin_id),
+            phone=phone,
+            agents_summary=[]
+        )
+
+    # ---- Basic fields ----
+    if first_name:
+        lead.first_name = first_name
+
+    if last_name:
+        lead.last_name = last_name
+
+    if email:
+        lead.email = email
+
+    if phone:
+        lead.phone = phone
+
+    if metadata:
+        if lead.metadata:
+            lead.metadata.update(metadata)  # merge with existing
+        else:
+            lead.metadata = metadata
+    
+    if last_call_id:
+        lead.last_call_id = ObjectId(last_call_id)
+
+    # ---- Agent-specific summary ----
+    if agent_summary:
+        existing = next(
+            (s for s in lead.agents_summary if str(s.agent_id) == agent_id),
+            None
+        )
+
+        if existing:
+            existing.summary = agent_summary
+        else:
+            lead.agents_summary.append(
+                LeadsSummary(
+                    user_id=ObjectId(user_id),
+                    agent_id=ObjectId(agent_id),
+                    summary=agent_summary,
+                )
+            )
+
+    # ---- Overall summary ----
+    if overall_summary:
+        lead.overall_summary = overall_summary
+
+    lead.save()
+
+    return {"status": "success"}
+
+async def get_lead_by_phone(phone_number: str, admin_id: str) -> VoiceCallLeads | None:
+    lead = VoiceCallLeads.objects(
+        phone=phone_number,
+        admin_id=ObjectId(admin_id)
+    ).first()
+
+    return lead
+
+async def get_summary_by_phone_number(phone_number: str, admin_id: str, agent_id: str) -> LeadSummary:
+    lead = await get_lead_by_phone(phone_number, admin_id)
+    
+    if not lead:
+        return None
+
+    last_call_details = await get_latest_completed_call_details(phone_number, agent_id)
+
+    # Try to find agent-specific summary first
+    agent_summary = next(
+        (s.summary for s in lead.agents_summary if str(s.agent_id) == agent_id),
+        None
+    )
+
+    # Fallback to overall summary
+    return LeadSummary(
+        agent_summary=agent_summary if agent_summary else None,
+        overall_summary=lead.overall_summary if lead.overall_summary else None,
+        last_call_summary=last_call_details.analysis.summary if last_call_details and last_call_details.analysis and last_call_details.analysis.summary else None
+    )
+
+async def get_latest_completed_call_details(phone_number: str, agent_id: str) -> VoiceCallDetails | None:
+    last_call = VoiceCalls.objects(
+        customer_phone=phone_number,
+        agent_id=ObjectId(agent_id),
+        status="completed"
+    ).order_by("-start_time_unix_secs").first()
+
+    if not last_call:
+        return None
+
+    call_details = VoiceCallDetails.objects(call_id=str(last_call.id)).first()
+    return call_details

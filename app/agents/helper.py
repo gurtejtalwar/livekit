@@ -1,22 +1,61 @@
-from bson import ObjectId
+import requests
 import logging
+from bson import ObjectId
+
 from app.shared import models
 from app import agents
 from app.agents.prompt import inbound
-from app.agents import UserData
+from app.agents import LeadData, LeadSummary
+from app.models.call_models import get_lead_by_phone, get_summary_by_phone_number
 
 logger = logging.getLogger(__name__)
 
-async def get_user_data(agent_id, phone_number): #TODO HAZARD
-    return UserData(
-        user_id="6992f9020296c31229cfacf0",
-        name="Gurtej Singh",
-        email="gurtej@gmail.com",
-        phone="+917460015555"
-    )
+def fetch_json_from_s3(url: str) -> dict:
+    """
+    Fetch JSON data from a public S3 URL and return it as a Python dictionary.
 
-async def load_agent_runtime_config(agent_id: str, user_data: UserData):
-    workflow_doc = None
+    Args:
+        url (str): Public S3 URL to the JSON file
+
+    Returns:
+        dict: Parsed JSON data
+
+    Raises:
+        requests.exceptions.RequestException: If the request fails
+        ValueError: If the response is not valid JSON
+    """
+    response = requests.get(url, timeout=10)
+    response.raise_for_status()  # Raises error for bad status codes
+
+    try:
+        return response.json()
+    except ValueError:
+        raise ValueError("Response content is not valid JSON")
+    
+async def get_lead_data(admin_id: str, phone_number: str) -> LeadData: #TODO HAZARD
+    lead = await get_lead_by_phone(phone_number, admin_id)
+
+    if lead is not None:
+        return LeadData(
+            admin_id=str(lead.admin_id),
+            lead_id=str(lead.id),
+            name=lead.first_name,
+            email=lead.email,
+            phone=lead.phone
+        )
+    else:
+        return LeadData(
+            user_id=None,
+            name=None,
+            email=None,
+            phone=phone_number
+        )
+
+async def get_lead_agent_and_overall_summary(agent_id: str, admin_id: str, phone_number: str) -> LeadSummary: #TODO HAZARD
+    summary = await get_summary_by_phone_number(phone_number, admin_id, agent_id)
+    return summary
+
+async def load_agent_runtime_config(agent_id: str):
     agent: models.VoiceAgent = models.VoiceAgent.objects(
         id=ObjectId(agent_id)).first()
     if not agent:
@@ -35,15 +74,17 @@ async def load_agent_runtime_config(agent_id: str, user_data: UserData):
     # voice_doc: models.VoiceAgentVoiceConfig = models.VoiceAgentVoiceConfig.objects(
     #     agentId=agent.id).first()
 
+    workflow_doc = None
     if config_doc.isWorkflowEnabled:
-        workflow_doc: models.VoiceAgentWorkflow = models.VoiceAgentWorkflow.objects(agentId=agent.id).first()
+        workflow_s3_url = config_doc.workflowS3Url
+        workflow_doc = fetch_json_from_s3(workflow_s3_url) if workflow_s3_url else None
     
     human_phone_number = None
     if escalation_doc.humanEscalationEnabled is True and escalation_doc.teamMembers:
         team_member_id = escalation_doc.teamMembers[0]["_id"]
         voicebot_settings_doc: models.VoiceBotSettings = models.VoiceBotSettings.objects(userId=ObjectId(team_member_id)).first()
         human_phone_number = voicebot_settings_doc.phone_number
-    # ---------- SYSTEM PROMPT ----------
+    # ---------- SYSTEM PROMPT ---------- 
     system_prompt = (
         config_doc.systemPrompt
         if config_doc and config_doc.systemPrompt
@@ -51,24 +92,26 @@ async def load_agent_runtime_config(agent_id: str, user_data: UserData):
         if agent.agentConfig
         else ""
     )
-    system_prompt += (
-        f"\nUser Data: \n"
-        f"Caller Name: {user_data.name}\n "
-        f"Caller Email: {user_data.email}\n "
-        f"Caller Phone: {user_data.phone}\n"
-        f"Agent ID: {user_data.agent_id}\n"
-        f"Caller ID: {user_data.user_id}\n"
-        f"Caller Current Time: {user_data.user_current_time}\n"
-        f"Caller Timezone: {user_data.user_timezone}\n"
-    )
-    lk_prompt = inbound.lk_prompt.format(
-        agent_name=agent.agentName,
-        admin_goal=system_prompt,
-        language=voice_config_doc.language if voice_config_doc and voice_config_doc.language else "English",
-        additional_languages=", ".join(config_doc.additionalLanguages) if config_doc and config_doc.additionalLanguages else [],
-        time=get_time_in_timezone(config_doc.timezone),
-        timezone=config_doc.timezone
-    )
+    # system_prompt += (
+    #     f"\nUser Data: \n"
+    #     f"Caller Name: {lead_data.name}\n "
+    #     f"Caller Email: {lead_data.email}\n "
+    #     f"Caller Phone: {lead_data.phone}\n"
+    #     f"Agent ID: {lead_data.agent_id}\n"
+    #     f"Caller ID: {lead_data.user_id}\n"
+    #     f"Caller Current Time: {lead_data.user_current_time}\n"
+    #     f"Caller Timezone: {lead_data.user_timezone}\n"
+    # )
+    # lk_base_prompt = inbound.lk_base_prompt.format(
+    #     agent_name=agent.agentName,
+    #     admin_goal=system_prompt,
+    #     language=voice_config_doc.language if voice_config_doc and voice_config_doc.language else "English",
+    #     additional_languages=", ".join(config_doc.additionalLanguages) if config_doc and config_doc.additionalLanguages else [],
+    #     time=get_time_in_timezone(config_doc.timezone),
+    #     timezone=config_doc.timezone
+    # )
+    # ---------- SYSTEM PROMPT ---------- #TODO Move
+
     # ---------- LLM ----------
     llm = config_doc.llm if config_doc and config_doc.llm else {}
     llm_provider = llm.get("provider", "groq")
@@ -95,9 +138,14 @@ async def load_agent_runtime_config(agent_id: str, user_data: UserData):
     tools = config_doc.tools if config_doc and config_doc.tools else []
 
     # ---------- GREETING ----------
-    greeting = (
-        config_doc.welcomeMessage
-        if config_doc and config_doc.welcomeMessage
+    inbound_first_message = (
+        config_doc.inboundFirstMessage
+        if config_doc and config_doc.inboundFirstMessage
+        else "Hello! How can I assist you today?"
+    )
+    outbound_first_message = (
+        config_doc.outboundFirstMessage
+        if config_doc and config_doc.outboundFirstMessage
         else "Hello! How can I assist you today?"
     )
 
@@ -106,9 +154,10 @@ async def load_agent_runtime_config(agent_id: str, user_data: UserData):
         agent_id=str(agent.id),
         admin_id=str(agent.adminId),
         agent_name=agent.agentName,
+        use_case=identity_doc.useCase,
         knowledge_base_id=identity_doc.resourceCentreId,
-        system_prompt=lk_prompt,
-        workflow_graph_json=workflow_doc.workflow_config if workflow_doc else None,
+        system_prompt=system_prompt,
+        workflow_graph_json=workflow_doc if workflow_doc else None,
         models=agents.ModelConfig(
             stt=agents.STTConfig(
                 provider=stt_provider,
@@ -131,9 +180,18 @@ async def load_agent_runtime_config(agent_id: str, user_data: UserData):
             ),
         ),
         tools=tools,
-        greeting=greeting,
+        greeting=agents.Greeting(
+            inbound=inbound_first_message,
+            outbound=outbound_first_message
+        ),
         allow_recording=advanced_doc.privacy.get("audioRecording", True),
-        max_duration=advanced_doc.inboundTimeout.get("maxDuration", -1) if advanced_doc else None,
+        conv_behaviour=agents.ConversationBehaviour(
+            end_after_silence_seconds=advanced_doc.conversationalBehavior.get("endConversationAfterSilenceSeconds", -1) if advanced_doc and advanced_doc.conversationalBehavior else None,
+            take_turn_after_silence_seconds=advanced_doc.conversationalBehavior.get("takeTurnAfterSilenceSeconds", -1) if advanced_doc and advanced_doc.conversationalBehavior else None,
+            num_retry_before_end=advanced_doc.conversationalBehavior.get("retryBeforeEnd", -1) if advanced_doc and advanced_doc.conversationalBehavior else None,
+            max_duration_seconds=advanced_doc.conversationalBehavior.get("maxConversationDurationSeconds", -1) if advanced_doc and advanced_doc.conversationalBehavior else None,
+            max_duration_message=advanced_doc.conversationalBehavior.get("maxConversationDurationMessage", "I'm sorry, I've reached the maximum time limit for this call. Goodbye!")
+        ) if advanced_doc and advanced_doc.conversationalBehavior else None,
         human_phone_number=human_phone_number,
         outbound_trunk_id=agent.outboundTrunkId if agent.outboundTrunkId else ""
     )

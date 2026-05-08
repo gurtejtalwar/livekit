@@ -12,6 +12,7 @@ class TTS:
             emotion=cfg.models.tts.emotion,
             speed=cfg.models.tts.speed,
             volume=cfg.models.tts.volume,
+            language=cfg.models.tts.language,
         ),
         "elevenlabs": lambda cfg: elevenlabs.TTS(
             model=cfg.models.tts.model,

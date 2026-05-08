@@ -3,11 +3,11 @@ name = "livekit-test"
 version = "0.1.0"
 description = "Add your description here"
 readme = "README.md"
-requires-python = ">=3.11,<3.13"
+requires-python = ">=3.10, <3.13"
 dependencies = [
     "faiss-cpu>=1.13.1",
     "groq>=0.37.1",
-    "livekit-agents[assemblyai,cartesia,deepgram,elevenlabs,groq,openai,silero,turn-detector]~=1.0",
+    "livekit-agents[assemblyai,cartesia,deepgram,elevenlabs,groq,openai,silero,turn-detector]~=1.4",
     "livekit-plugins-noise-cancellation~=0.2",
     "motor>=3.7.1",
     "optimum[onnxruntime]>=2.0.0",
@@ -23,4 +23,6 @@ dependencies = [
     "phonenumbers>=9.0.24",
     "pytz>=2025.2",
     "livekit>=1.0.19",
+    "livekit-plugins-dtln>=0.1.5",
+    "deepfilternet>=0.5.6",
 ]

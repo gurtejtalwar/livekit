@@ -1,6 +1,9 @@
 from dataclasses import dataclass
 
 from app.agents import AgentConfig
+from .utilities import (
+    update_lead_profile,
+)
 from .tools import (
     end_call,
     make_ask_knowledge_base_tool, 
@@ -38,63 +41,78 @@ class ToolContext:
     agent_id: str
     kb: object | None = None
 
-def resolve_ask_knowledge_base(ctx: ToolContext):
-    return make_ask_knowledge_base_tool(ctx.kb)
+def resolve_ask_knowledge_base(tool_ctx: ToolContext):
+    return make_ask_knowledge_base_tool(tool_ctx.kb)
 
-def resolve_get_current_time(ctx: ToolContext):
+def resolve_get_current_time(tool_ctx: ToolContext):
     return get_current_time
 
-def resolve_book_appointment(ctx: ToolContext):
+def resolve_book_appointment(tool_ctx: ToolContext):
     return book_appointment
 
-def resolve_cancel_appointment(ctx: ToolContext):
+def resolve_cancel_appointment(tool_ctx: ToolContext):
     return cancel_appointment
 
-def resolve_get_available_slots(ctx: ToolContext):
+def resolve_get_available_slots(tool_ctx: ToolContext):
     return get_available_slots
 
-def resolve_reschedule_appointment(ctx: ToolContext):
+def resolve_reschedule_appointment(tool_ctx: ToolContext):
     return reschedule_appointment
 
-def resolve_end_call(ctx: ToolContext):
+def resolve_end_call(tool_ctx: ToolContext):
     return end_call
 
-def resolve_transfer_to_human(ctx: ToolContext):
+def resolve_transfer_to_human(tool_ctx: ToolContext):
     return transfer_to_human
 
-def resolve_detected_voicemail(ctx: ToolContext):
+def resolve_detected_voicemail(tool_ctx: ToolContext):
     return detected_voicemail
 
-def resolve_call_back(ctx: ToolContext):
+def resolve_call_back(tool_ctx: ToolContext):
     return call_back
 
-def resolve_do_not_call(ctx: ToolContext):
+def resolve_do_not_call(tool_ctx: ToolContext):
     return do_not_call
 
-def resolve_sales_lead_generation(ctx: ToolContext):
+def resolve_sales_lead_generation(tool_ctx: ToolContext):
     return sales_lead_generation
 
-def resolve_feedback_review_collection(ctx: ToolContext):
+def resolve_feedback_review_collection(tool_ctx: ToolContext):
     return feedback_review_collection
 
-def resolve_information_faq_mode(ctx: ToolContext):
+def resolve_information_faq_mode(tool_ctx: ToolContext):
     return information_faq_mode
 
-def resolve_customer_support(ctx: ToolContext):
+def resolve_customer_support(tool_ctx: ToolContext):
     return customer_support
 
-def resolve_follow_ups_reminders(ctx: ToolContext):
+
+def resolve_create_customer_ticket(tool_ctx: ToolContext):
     return None
-# def resolve_utility_switch_to_english(ctx: ToolContext):
+
+def resolve_follow_ups_reminders(tool_ctx: ToolContext):
+    return None
+# def resolve_utility_switch_to_english(tool_ctx: ToolContext):
 #     return utility_tools.switch_to_english
-# def resolve_utility_switch_to_spanish(ctx: ToolContext):
+# def resolve_utility_switch_to_spanish(tool_ctx: ToolContext):
 #     return utility_tools.switch_to_spanish
-# def resolve_utility_switch_to_french(ctx: ToolContext):
+# def resolve_utility_switch_to_french(tool_ctx: ToolContext):
 #     return utility_tools.switch_to_french
-# def resolve_utility_switch_to_german(ctx: ToolContext):
+# def resolve_utility_switch_to_german(tool_ctx: ToolContext):
 #     return utility_tools.switch_to_german
-# def resolve_utility_switch_to_italian(ctx: ToolContext):
+# def resolve_utility_switch_to_italian(tool_ctx: ToolContext):
 #     return utility_tools.switch_to_italian
+def resolve_utility_update_lead_profile(tool_ctx: ToolContext):
+    return update_lead_profile
+
+UTILITY_TOOL_REGISTRY = {
+    "utility_update_lead_profile": resolve_utility_update_lead_profile,
+    # "utility_switch_to_english": resolve_utility_switch_to_english,
+    # "utility_switch_to_spanish": resolve_utility_switch_to_spanish,
+    # "utility_switch_to_french": resolve_utility_switch_to_french,
+    # "utility_switch_to_german": resolve_utility_switch_to_german,
+    # "utility_switch_to_italian": resolve_utility_switch_to_italian
+}
 
 TOOL_REGISTRY = {
     "ask_knowledge_base": resolve_ask_knowledge_base,
@@ -111,17 +129,9 @@ TOOL_REGISTRY = {
     "sales_lead_generation": resolve_sales_lead_generation,
     "customer_support": resolve_customer_support,
     "feedback_review_collection": resolve_feedback_review_collection,
-    "information_faq_mode": resolve_information_faq_mode, #TODO HAZARD BACKLOG
+    "information_faq_mode": resolve_information_faq_mode,
     "follow_ups_reminders": resolve_follow_ups_reminders, #TODO HAZARD BACKLOG
-    
-
-
-#     "utility_switch_to_english": resolve_utility_switch_to_english, #TODO DB State Maintain from FE
-#     "utility_switch_to_spanish": resolve_utility_switch_to_spanish, #TODO DB State Maintain from FE
-#     "utility_switch_to_french": resolve_utility_switch_to_french, #TODO DB State Maintain from FE
-#     "utility_switch_to_german": resolve_utility_switch_to_german, #TODO DB State Maintain from FE
-#     "utility_switch_to_italian": resolve_utility_switch_to_italian #TODO DB State Maintain from FE
-# 
+    "create_customer_ticket": resolve_customer_support, #TODO HAZARD BACKLOG
 }
 
 def resolve_tools(config: AgentConfig) -> list:
@@ -137,4 +147,5 @@ def resolve_tools(config: AgentConfig) -> list:
             raise ValueError(f"Unknown tool: {tool_name}")
         resolved_tools.append(resolver(tool_ctx))
 
+    resolved_tools.extend([resolver(tool_ctx) for name, resolver in UTILITY_TOOL_REGISTRY.items()])
     return resolved_tools

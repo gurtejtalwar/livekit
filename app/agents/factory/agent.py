@@ -10,7 +10,8 @@ from livekit.plugins import deepgram, cartesia, groq, openai, elevenlabs, assemb
 from livekit.plugins.turn_detector.english import EnglishModel
 from livekit.plugins.turn_detector.multilingual import MultilingualModel
 
-from app.agents import AgentConfig, UserData
+from app.agents.prompt.builder import PromptBuilder
+from app.agents import AgentConfig, LeadContext
 from app.agents.prompt import inbound as inbound_prompt
 from app.agents.tools import resolve_tools
 from app.models import call_models
@@ -73,6 +74,37 @@ class InboundAgent(Agent):
         )
 
         self.config = config
+        self._filler_task = None
+
+    @property
+    def is_filler_enabled(self) -> bool:
+        """Checks if the user actually configured the timeout settings."""
+        return (
+            self.config.agent_timeout is not None and
+            self.config.agent_timeout.delay_before_message is not None and
+            self.config.agent_timeout.filler_message is not None
+        )
+
+    async def _run_filler_timer(self):
+        """Timer logic using the config values."""
+        try:
+            # Access the config safely now that we checked is_filler_enabled
+            delay = self.config.agent_timeout.delay_before_message
+            message = self.config.agent_timeout.filler_message
+            
+            await asyncio.sleep(delay)
+            await self.session.say(message)
+        except asyncio.CancelledError:
+            pass
+
+    async def _cancel_filler_task(self):
+        if self._filler_task and not self._filler_task.done():
+            self._filler_task.cancel()
+            try:
+                await self._filler_task
+            except asyncio.CancelledError:
+                pass
+            self._filler_task = None
 
     async def on_enter(self):
         logger.info("Node: on_enter called")
@@ -105,10 +137,23 @@ class InboundAgent(Agent):
                  text,
                  model_settings):
         logger.info("Node: tts_node called")
+        # We always attempt to cancel, just in case a task is running
+        # (This is safe even if is_filler_enabled is False because _cancel_filler_task handles it)
+        await self._cancel_filler_task()
         return self.default.tts_node(self, text, model_settings)
     
     async def on_exit(self):
         logger.info("Node: on_exit called")
+
+    async def on_user_turn_completed(
+        self, turn_ctx: llm.ChatContext, new_message: llm.ChatMessage
+    ) -> None:
+        logger.info("Node: on_user_turn_completed called")
+        # Only start if the config exists
+        if self.is_filler_enabled:
+            logger.info("Config found: Starting filler timer.")
+            await self._cancel_filler_task()
+            self._filler_task = asyncio.create_task(self._run_filler_timer())
 
     async def _switch_language(self, language_code: str) -> None:
         """Helper method to switch the language"""
@@ -155,20 +200,31 @@ class InboundAgent(Agent):
     async def switch_to_hindi(self, reason: str):
         """Switch to speaking Hindi"""
         await self._switch_language("hi")  
+
 class AgentFactory:
     @staticmethod
-    async def get_user_data(agent_id: str, user_phone_number: str = "") -> UserData:
-        return await helper.get_user_data(agent_id, user_phone_number)    
+    async def get_lead_context(agent_id: str, admin_id: str, user_phone_number: str = "") -> LeadContext:
+        lead_data = await helper.get_lead_data(admin_id, user_phone_number)
+        summary = await helper.get_lead_agent_and_overall_summary(agent_id=agent_id, admin_id=admin_id, phone_number=user_phone_number)
+        
+        return LeadContext(data=lead_data, summary=summary)
+    
+    @staticmethod
+    async def load_agent_config(agent_id: str) -> AgentConfig:
+        return await helper.load_agent_runtime_config(agent_id)    
 
     @staticmethod
-    async def load_agent_config(user_data, agent_id: str) -> AgentConfig:
-        return await helper.load_agent_runtime_config(agent_id, user_data)    
-
-    @staticmethod
-    def from_config(cfg: AgentConfig) -> InboundAgent:
+    def from_config(cfg: AgentConfig,
+                    lead_ctx: LeadContext) -> InboundAgent:
         cfg.lk_plugins.lk_stt = factory.STT.create(cfg)
         cfg.lk_plugins.lk_llm = factory.LLM.create(cfg)
         cfg.lk_plugins.lk_tts = factory.TTS.create(cfg)
+        instructions = PromptBuilder(
+            config=cfg,
+            lead=lead_ctx,
+            call_type=cfg.call_type
+        ).build()
+        cfg.system_prompt = instructions
         return InboundAgent(config=cfg)
 
     @staticmethod

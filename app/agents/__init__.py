@@ -19,20 +19,33 @@ CARTESIA_VOLUME_MAP = {
     "high": 1.5,
 }
 
+@dataclass
+class LeadSummary:
+    agent_summary: str = ""
+    overall_summary: str = ""
+    last_call_summary: str = ""
 
 @dataclass
-class UserData:
-    user_id: str
+class LeadData:
     name: str
     email: str
-    phone: str = ""
+
+    user_id: str = ""
+    lead_id: str = ""
     agent_id: str = ""
     admin_id: str = ""
+    phone: str = ""
+    
     user_timezone: str = ""
     user_current_time: str = ""
     call_id: str = None
     outbound_trunk_id: str = "" #TODO WRAP IN OBJECT
     human_escalation_phone: str = "" #TODO WRAP IN OBJECT
+
+@dataclass
+class LeadContext:
+    data: LeadData
+    summary: LeadSummary = field(default_factory=LeadSummary)
 
 class CallDetails(BaseModel):
     livekit_call_id: str
@@ -125,6 +138,21 @@ class ModelConfig(BaseModel):
     llm: LLMConfig
     tts: TTSConfig
 
+class Greeting(BaseModel):
+    inbound: str
+    outbound: str
+
+class AgentTimeout(BaseModel):
+    delay_before_message: int = None
+    filler_message: str = None
+
+class ConversationBehaviour(BaseModel):
+    end_after_silence_seconds: Optional[float] = None
+    take_turn_after_silence_seconds: Optional[float] = None
+    num_retry_before_end: Optional[int] = None
+    max_duration_seconds: Optional[float] = None
+    max_duration_message: Optional[str] = "I'm sorry, I've reached the maximum time limit for this call. Goodbye!"
+
 class AgentConfig(BaseModel):
     models: ModelConfig
     lk_plugins: LivekitPlugins = LivekitPlugins()
@@ -133,14 +161,16 @@ class AgentConfig(BaseModel):
     agent_id: str
     admin_id: str
     agent_name: str
-
+    use_case: Optional[str] = None
+    campaign_id: str = None
     knowledge_base_id: Optional[str] = None
     workflow_graph_json: Optional[dict] = None
 
+    call_context: Optional[dict] = None 
     call_type: Literal["inbound", "outbound", "test-inbound", "test-outbound"] = None
     call_details: Optional[CallDetails] = None
 
-    system_prompt: str
+    system_prompt: str = ""
 
 
     language: Optional[str] = "English"
@@ -153,7 +183,7 @@ class AgentConfig(BaseModel):
     allow_interruptions: bool = True
     allow_recording: bool
 
-    greeting: str = "Hello! How can I assist you today?"
+    greeting: Greeting
     # Livekit JobContext
     ctx: JobContext = None
 
@@ -163,3 +193,5 @@ class AgentConfig(BaseModel):
     max_duration: Optional[int] = None #TODO WRAP IN OBJECT
     outbound_trunk_id: str
     human_phone_number: Optional[str] = None
+    agent_timeout: Optional[AgentTimeout] = None
+    conv_behaviour: Optional[ConversationBehaviour] = None

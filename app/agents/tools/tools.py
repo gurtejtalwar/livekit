@@ -1,12 +1,14 @@
 import os
 import pickle
 import faiss
+from requests import session
 import torch
 import asyncio
 import logging
 import gc
 
 import time
+from functools import wraps
 from datetime import datetime, timezone
 from dotenv import load_dotenv
 from typing import Optional, List, Literal
@@ -19,12 +21,61 @@ from livekit.agents import llm, get_job_context, RunContext
 
 from app.utils.timer import Timer
 from app.shared.settings import get_settings
-from app.utils.requests import _request
+from app.utils.requests import _request, APIClient
 from app.agents.workflows import WarmTransferTask
 
 load_dotenv(override=True)
 settings = get_settings()
 logger = logging.getLogger("TOOLS")
+
+from opentelemetry import trace
+import json as json_lib
+
+tracer = trace.get_tracer(__name__)
+
+class ToolExecutor:
+    @staticmethod
+    async def run(tool_name: str, fn, *, args: dict):
+        span = trace.get_current_span()
+
+        span.update_name(tool_name)
+
+        span.set_attribute("tool.name", tool_name)
+        span.set_attribute("tool.args", json_lib.dumps(args))
+
+        try:
+            result = await fn()
+
+            span.set_attribute(
+                "tool.response",
+                json_lib.dumps(result)[:2000]
+            )
+            span.set_attribute("tool.status", "success")
+
+            return result
+
+        except Exception as e:
+            span.set_attribute("tool.status", "error")
+            span.set_attribute("tool.error", str(e))
+            raise
+
+def tool(name: str):
+    def decorator(fn):
+        @llm.function_tool
+        @wraps(fn)
+        async def wrapper(*args, **kwargs):
+            return await ToolExecutor.run(
+                name,
+                lambda: fn(*args, **kwargs),
+                args=kwargs
+            )
+
+        wrapper.__name__ = name  # extra safety
+        return wrapper
+    return decorator
+
+n3_api = APIClient(settings.N3_ISC_URL, settings.N3_ISC_API_KEY)
+n1_api = APIClient(settings.N1_ISC_URL, settings.N1_ISC_API_KEY)
 
 class KnowledgeBase:
     def __init__(self, index, chunks):
@@ -90,7 +141,7 @@ def load_knowledge_base(resource_centre_id: str) -> KnowledgeBase:
 
 def make_ask_knowledge_base_tool(kb: KnowledgeBase):
 
-    @llm.function_tool
+    @tool("ask_knowledge_base")
     async def ask_knowledge_base(question: str):
         with Timer("KB Tool Total"):
             with Timer("Embed Query"):
@@ -127,14 +178,14 @@ model = "test"
 with Timer("Load Embedding Model"):
 
     if model not in MODEL_CACHE:
-        tokenizer = AutoTokenizer.from_pretrained("sentence-transformers/all-MiniLM-L6-v2")
+        tokenizer = AutoTokenizer.from_pretrained("sentence-transformers/all-MiniLM-L6-v2", local_files_only=True)
         model = ORTModelForFeatureExtraction.from_pretrained(
             "sentence-transformers/all-MiniLM-L6-v2",
         )
         MODEL_CACHE[model]=True
 
 
-@llm.function_tool
+@tool("get_current_time")
 async def get_current_time(input: str) -> str:
     """Get the current time."""
     from datetime import datetime
@@ -142,67 +193,105 @@ async def get_current_time(input: str) -> str:
 
 async def hangup_call(ctx: RunContext):
     # Ensure any pending agent speech is finished before killing the room
-    await ctx.wait_for_playout()
-    await api.room.delete_room(
-        api.DeleteRoomRequest(room=ctx.room.name)
-    )
-
-@llm.function_tool
-async def end_call(ctx: RunContext,
-                   reason: str = ""):
-    """
-    End the current call session gracefully.
-
-    This tool must ONLY be used when:
-    - The user explicitly indicates they want to end the call
-    - The conversation has naturally concluded
-    ----------------------------
-    reason:
-        Optional reason for ending the call.
-    ----------------------------
-    EXECUTION RULES
-    ----------------------------
-
-    - Use this tool ONLY when the user clearly wants to end the call
-    - Examples include:
-        - "bye"
-        - "goodbye"
-        - "that's all"
-        - "thanks, that's it"
-        - explicit confirmation to end the call
-    - Do NOT call this tool prematurely
-    - Always ensure a proper closing statement is delivered before ending the call
-    - Do NOT continue conversation after triggering this tool
-    - Only execute this tool when intent to end the call is FINAL and unambiguous
-
-    ----------------------------
-    FAILURE HANDLING
-    ----------------------------
-
-    - If the call termination fails:
-        - Do NOT retry repeatedly
-        - Attempt a graceful fallback closing message
-        - Ensure no further interaction continues after failure
-    """
-   
-    session = ctx.session
-    session.generate_reply(instructions="You/User have chosen to end the call. Reply with a closing statement and do not say anything after this. Then end the call.")
-    await ctx.wait_for_playout() # Ensure agent finishes speaking
+    ctx.wait_for_playout()
     job_ctx = get_job_context()
     if job_ctx:
-        # Use job_ctx.api to delete the room
-        await job_ctx.api.room.delete_room(
-            api.DeleteRoomRequest(room=job_ctx.room.name)
-        )
+        logger.info("Cutting the line now...")
+        try:
+            # This triggers an immediate disconnect for the caller (PSTN/SIP/WebRTC)
+            await job_ctx.api.room.delete_room(
+                api.DeleteRoomRequest(room=job_ctx.room.name)
+            )
+            logger.info("Room deleted successfully.")
+            # We do NOT call job_ctx.shutdown() here. 
+            # Deleting the room will cause the agent to disconnect, 
+            # which automatically triggers your 'add_shutdown_callback' tasks.
+        except Exception as e:
+            logger.error(f"Error during immediate hangup: {e}")
+            # Fallback to manual shutdown if API call fails
+            job_ctx.shutdown()
 
-@llm.function_tool
+    return "Call terminated."
+
+@tool("end_call")
+async def end_call(ctx: RunContext, sentiment: str = "neutral", reason: str = ""):
+    """
+    Gracefully terminates the ongoing voice call/session.
+
+    This tool is invoked by the agent when it determines that the conversation
+    has reached a natural conclusion or when a specific condition requires
+    ending the call (e.g., user request, task completion, escalation, etc.).
+    
+    Args:
+        sentiment (str): The final vibe of the user: 'positive', 'neutral', or 'negative'.
+        reason (str, optional): A short description of why the call is being
+            ended (e.g., "user requested", "task completed", "no response").
+            Defaults to an empty string.
+
+    Usage Guidelines (for LLM):
+    - Only call this function when the conversation is clearly complete.
+    - Do NOT call this function on partial acknowledgements (e.g., "thanks").
+    - Prefer confirming with the user before ending the call unless explicitly requested.
+
+    Returns:
+        None
+    """
+    session = ctx.session
+    use_case = session.userdata.get("agent_use_case", "general")
+    # 1. Define dynamic instructions based on Use Case and Sentiment
+    if use_case == "outbound_sales":
+        if sentiment == "positive":
+            instructions = "The user is happy! End with high energy, thank them for their time, and wish them a fantastic day."
+        elif sentiment == "neutral":
+            instructions = "The user is indifferent. Try to 'hook' them by mentioning you'll follow up or suggest a better time to talk later, then end politely."
+        else: # Negative
+            # 🛑 CRITICAL: We pivot to feedback here and DO NOT hang up.
+            speech = await session.generate_reply(
+                instructions="The user is unhappy. Apologize sincerely for any inconvenience and ask if they'd be willing to provide a quick 1-5 rating so we can improve. DO NOT hang up yet."
+            )
+            return "Pivoting to feedback collection due to negative sentiment."
+    else:
+        # Default behavior for non-sales agents
+        instructions = "Provide a standard polite closing message."
+
+    # 2. Execute the speech for Positive/Neutral/General
+    speech = await session.generate_reply(instructions=instructions)
+    await speech.wait_for_playout()  # Ensure the message is played before hanging up
+    # # 3. Wait for the agent to finish talking
+    # await speech.wait_if_not_interrupted()
+
+    # # 4. Only hang up if it wasn't a 'negative' pivot
+    # if not speech.interrupted:
+    #     logger.info(f"Closing {use_case} call with {sentiment} sentiment.")
+    await hangup_call(ctx)
+
+@tool("detected_voicemail")
 async def detected_voicemail(ctx: RunContext, dummy: str=""):
-    """Call this tool if you have detected a voicemail system, AFTER hearing the voicemail greeting"""
+    """
+    Trigger this tool IMMEDIATELY when the call is answered by a voicemail system.
+
+    Strong indicators of voicemail include phrases like:
+    - "Your call has been forwarded to voicemail"
+    - "Please leave a message after the tone"
+    - "The person you are trying to reach is not available"
+    - "Record your message"
+    - "At the tone"
+    - Beeps or long pauses followed by recording instructions
+
+    Rules:
+    - This should take priority over normal conversation or end_call.
+    - Do NOT respond conversationally to voicemail systems.
+    - Do NOT wait for further user input once voicemail is clear.
+    - Trigger as soon as voicemail intent is confidently detected.
+
+    After triggering, the system will leave a voicemail message and hang up.
+    """
     await ctx.session.generate_reply(
-        instructions="Leave a voicemail message letting the user know you'll call back later."
+        instructions="Leave a voicemail message letting the user know who you are and why you called and that you will call back later. Please NOTE you are already inside a tool execution, so do not respond with a tool call since that will be an error."
     )
     await asyncio.sleep(0.5) # Add a natural gap to the end of the voicemail message
-    await hangup_call()
+    await ctx.wait_for_playout()
+    await hangup_call(ctx)
 
 
 #/ -- Book Appointment Tool --/
@@ -212,7 +301,7 @@ class CustomField(BaseModel):
     value: str
 
 #/ -- Book Appointment Tool --/
-@llm.function_tool
+@tool("book_appointment")
 async def book_appointment(
     name: str,
     date: str,
@@ -222,13 +311,29 @@ async def book_appointment(
     customFields: Optional[List[CustomField]] = None,
 ):
     """
-    Called only when the user confirms the date and time for booking a new appointment.
-    Do not call this tool without confirming with the user first. 
+    Create a new appointment booking.
+
+    Trigger this tool ONLY after:
+    - The user has explicitly confirmed BOTH date and time
+    - The appointment details are final and agreed upon
+
+    DO NOT call this tool if:
+    - The user is still exploring options
+    - Date or time is missing or uncertain
+    - The user has not explicitly confirmed
+
+    Before calling:
+    - Always confirm: "Should I go ahead and book this for you?"
+    - Ensure name, date, and time are clearly captured
+
+    Execution:
+    - Call immediately once confirmed
+    - Do NOT continue conversation after calling
+
+    If user changes details after confirmation:
+    - Do NOT call this tool again
+    - Restart the booking flow instead
     """
-    headers = {
-    "x-agent-secret": settings.N1_ISC_API_KEY,
-    "Content-Type": "application/json"
-    }
     payload = {
         "conversation_id": ctx.session.userdata.call_id,
         "caller_name": name,
@@ -238,56 +343,70 @@ async def book_appointment(
         "customFields": customFields or {}
     }
 
-    return await _request(
-        "POST",
-        f"{settings.N3_ISC_URL}/book-appointment",
-        headers=headers,
-        json=payload
-    )
+    return await n3_api.post("/book-appointment", payload)
 
 #/ -- Cancel Appointment Tool --/
-@llm.function_tool
+@tool("cancel_appointment")
 async def cancel_appointment(booking_id: str):
     """
-    Cancel an existing appointment using booking ID.
+    Cancel an existing appointment.
+
+    Trigger this tool ONLY when:
+    - The user explicitly requests cancellation
+    - A valid booking_id is available
+
+    DO NOT call if:
+    - Booking ID is missing → ask for it
+    - User intent is unclear → confirm first
+
+    Before calling:
+    - Confirm cancellation intent ("Do you want me to cancel it?")
+
+    Execution:
+    - Call immediately after confirmation
+    - Do NOT continue conversation after calling
     """
     headers = {
     "x-agent-secret": settings.N1_ISC_API_KEY,
     "Content-Type": "application/json"
     }
 
-    return await _request(
-        "DELETE",
-        f"{settings.N3_ISC_URL}/book-appointment",
-        headers=headers,
-        params={"booking_id": booking_id}
-    )
-
+    return await n3_api.delete("/book-appointment", 
+                               params={"booking_id": booking_id}
+                               )
+                               
 #/ -- Get Available Slots Tool --/
-@llm.function_tool
+@tool("get_available_slots")
 async def get_available_slots(
     city: str,
     ctx: RunContext,
 ):
     """
-    Get available appointment slots for a given agent and date.
+    Fetch available appointment slots for the user.
+
+    Trigger this tool when:
+    - The user asks for availability
+    - The user wants to book but no time is selected yet
+
+    DO:
+    - Use this as the FIRST step in booking flow
+    - Call as soon as city is known
+
+    DO NOT:
+    - Ask unnecessary follow-up questions before calling
+    - Delay this call if user intent is clear
+
+    After calling:
+    - Present slots clearly
+    - Guide user to choose one
     """
-    headers = {
-    "x-agent-secret": settings.N1_ISC_API_KEY,
-    "Content-Type": "application/json"
+    params={
+        "city": city,
+        "contact_phone": ctx.session.userdata.phone,
+        "timezoneName": "Asia/Calcutta", #TODO HAZARD
     }
-    result = await _request(
-        "GET",
-        f"{settings.N1_ISC_URL}/timeslot/get-voicebot-slots/{ctx.session.userdata.admin_id}",
-        headers=headers,
-        params={
-            "city": city,
-            "contact_phone": ctx.session.userdata.phone,
-            "timezoneName": "Asia/Calcutta", #TODO HAZARD
-        }
-    )
-    print("Available slots result:\n", result)
-    return result
+    return await n1_api.get(f"/timeslot/get-voicebot-slots/{ctx.session.userdata.admin_id}", params=params)
+
 
 async def get_available_slots_DEPRECATED(
     agentId: str,
@@ -315,7 +434,7 @@ async def get_available_slots_DEPRECATED(
     return result
 
 #/ -- Reschedule Appointment Tool --/
-@llm.function_tool
+@tool("reschedule_appointment")
 async def reschedule_appointment(
     booking_id: str,
     time: str,
@@ -323,12 +442,24 @@ async def reschedule_appointment(
     # customFields: dict | None = None
 ):
     """
-    Reschedule an existing appointment.
+    Reschedule an existing appointment to a new time.
+
+    Trigger this tool ONLY when:
+    - The user explicitly requests rescheduling
+    - booking_id is known
+    - New time is confirmed
+
+    DO NOT call if:
+    - Time is not finalized
+    - Booking ID is missing
+
+    Before calling:
+    - Confirm new time with the user
+
+    Execution:
+    - Call immediately after confirmation
+    - Do NOT continue conversation after calling
     """
-    headers = {
-    "x-agent-secret": settings.N1_ISC_API_KEY,
-    "Content-Type": "application/json"
-    }
     payload = {
         "booking_id": booking_id,
         "contact_phone": ctx.session.userdata.phone, #TODO QUERY - Feature for callback on different number? Misuse implications?,
@@ -337,15 +468,10 @@ async def reschedule_appointment(
         # "customFields": customFields or {}
     }
 
-    return await _request(
-        "PATCH",
-        f"{settings.N3_ISC_URL}/book-appointment",
-        headers=headers,
-        json=payload
-    )
+    return await n3_api.patch("/book-appointment", payload)
 
 #/ -- Create CRM Lead Tool --/
-@llm.function_tool
+@tool("create_crm_lead")
 async def create_crm_lead(
     first_name: str,
     email: str,
@@ -354,8 +480,23 @@ async def create_crm_lead(
     admin_id: str,
 ):
     """
-    Create a lead in the external CRM system.
-    Call this when a user wants to be contacted by sales or provides contact details.
+    Create a CRM lead for sales follow-up.
+
+    Trigger this tool when:
+    - User expresses interest in product/service
+    - User shares contact details willingly
+    - User wants to be contacted by sales
+
+    DO NOT call if:
+    - User is just asking general questions
+    - Contact intent is unclear
+
+    Before calling:
+    - Ensure first_name, email, phone, and company are collected
+
+    Execution:
+    - Call immediately once all details are available
+    - Do NOT continue conversation after calling
     """
     headers = {
     "x-agent-secret": settings.N1_ISC_API_KEY,
@@ -368,14 +509,9 @@ async def create_crm_lead(
         "company": company,
         "adminId": admin_id,
     }
+    return n1_api.post("/api/crm/external/lead-create", payload)
 
-    return await _request(
-        method="POST",
-        url=f"{settings.N1_ISC_URL}/api/crm/external/lead-create",
-        headers=headers,
-        json=payload,
-    )
-@llm.function_tool
+@tool("customer_support")
 async def customer_support(
     caller_name: str,
     contact_email: str,
@@ -386,10 +522,22 @@ async def customer_support(
     """
     Create a customer support ticket.
 
-    This tool must ONLY be used after:
-    - The caller explicitly agrees to create a support ticket
-    - All required information has been collected
+    Trigger this tool ONLY when:
+    - User has a clear issue/problem
+    - User explicitly agrees to create a support ticket
 
+    STRICT RULE:
+    - NEVER call without explicit consent
+
+    Flow:
+    1. Identify issue
+    2. Ask for consent
+    3. Collect missing fields ONE AT A TIME
+    4. Call immediately once complete
+
+    DO NOT:
+    - Ask redundant questions
+    - Continue conversation after collecting all fields
     ----------------------------
     PARAMETER DEFINITIONS
     ----------------------------
@@ -439,11 +587,6 @@ async def customer_support(
         - Inform the user the request cannot be completed right now
         - Offer a fallback (manual follow-up or retry later)
     """
-    headers = {
-    "x-agent-secret": settings.N1_ISC_API_KEY,
-    "Content-Type": "application/json"
-    }
-
     payload = {
         "caller_name": caller_name,
         "contact_email": contact_email,
@@ -454,14 +597,9 @@ async def customer_support(
         "agentId": ctx.session.userdata.agent_id,
     }
 
-    return await _request(
-        method="POST",
-        headers=headers,
-        url=f"{settings.N3_ISC_URL}/customer-ticket/create",
-        json=payload,
-    )
+    return await n3_api.post("/customer-ticket/create", payload)
 
-@llm.function_tool
+@tool("sales_lead_generation")
 async def sales_lead_generation(
     name: str,
     email: str,
@@ -469,12 +607,20 @@ async def sales_lead_generation(
     ctx: RunContext,
 ):
     """
-    Create a sales lead from the conversation.
+    Create a qualified sales lead.
 
-    This tool must ONLY be used after:
-    - The caller explicitly agrees to be contacted or followed up
-    - All required information has been collected
+    Trigger this tool ONLY when:
+    - User shows clear buying interest OR
+    - User agrees to be contacted by sales
 
+    DO NOT call if:
+    - User is just browsing or asking general questions
+
+    Before calling:
+    - Ensure name, email, and company are collected
+
+    Execution:
+    - Call immediately once details are complete
     ----------------------------
     PARAMETER DEFINITIONS
     ----------------------------
@@ -518,12 +664,6 @@ async def sales_lead_generation(
         - Inform the user the request cannot be completed right now
         - Offer a fallback (manual follow-up or retry later)
     """
-
-    headers = {
-        "x-agent-secret": settings.N1_ISC_API_KEY,
-        "Content-Type": "application/json"
-    }
-
     payload = {
         "name": name,
         "email": email,
@@ -533,15 +673,10 @@ async def sales_lead_generation(
         "adminId": ctx.session.userdata.admin_id,
     }
 
-    return await _request(
-        method="POST",
-        headers=headers,
-        url=f"{settings.N3_ISC_URL}/api/lead/voicebot/lead-create",
-        json=payload,
-    )
+    return await n3_api.post("/api/lead/voicebot/lead-create", payload)
 
 
-@llm.function_tool()
+@tool("feedback_review_collection")
 async def feedback_review_collection(
     rating: int,
     ctx: RunContext,
@@ -549,7 +684,7 @@ async def feedback_review_collection(
     """
     Collect customer service feedback rating.
 
-    This tool must ONLY be used in outbound calls after:
+    This tool must ONLY be used after:
     - The customer is asked to rate their experience
     - A valid rating (1–5) is explicitly provided
 
@@ -587,11 +722,6 @@ async def feedback_review_collection(
         - Offer a fallback (manual follow-up or retry later)
     """
 
-    headers = {
-        "x-agent-secret": settings.N1_ISC_API_KEY,
-        "Content-Type": "application/json"
-    }
-
     payload = {
         "rating": rating,
         "contact_phone": ctx.session.userdata.phone,
@@ -599,14 +729,10 @@ async def feedback_review_collection(
         "agentId": ctx.session.userdata.agent_id,
     }
 
-    return await _request(
-        method="POST",
-        headers=headers,
-        url=f"{settings.N3_ISC_URL}/service-feedback",
-        json=payload,
-    )
+    return await n3_api.post("/service-feedback", payload)
 
-@llm.function_tool()
+
+@tool("information_faq_mode")
 async def information_faq_mode(dummy: str): 
     pass
 
@@ -622,7 +748,7 @@ WHY they contacted you (goal, problem, request)
 WHY a human agent is requested or needed at this point
 Brief summary in 100-200 characters from a first-person perspective"""
 
-@llm.function_tool
+@tool("call_back")
 async def call_back(city: str,
                     type: Literal["absolute", "relative"],
                     meridiem: Literal["am", "pm"],
@@ -635,6 +761,7 @@ async def call_back(city: str,
 
     This tool must ONLY be used when:
     - The user explicitly requests a callback
+    - You have asked the user when they want to be called back - VERY IMPORTANT
     - The user agrees to be contacted later
     - A valid callback time can be determined
 
@@ -642,22 +769,12 @@ async def call_back(city: str,
     PARAMETER DEFINITIONS
     ----------------------------
 
-    city:
-        City of the caller.
-        Used to help determine or validate the user's timezone.
-        Extract from conversation if mentioned, otherwise infer from context if available.
-
     type:
         Type of time provided by the user:
         - "absolute" → specific time (e.g., "call me at 5 PM")
         - "relative" → relative time (e.g., "call me in 2 hours")
 
         Choose based on how the user expresses the callback time.
-
-    meridiem:
-        Indicates whether the time is AM or PM.
-        Must be either "am" or "pm".
-        Required for absolute time interpretation.
 
     value:
         Value of time for callback
@@ -680,6 +797,22 @@ async def call_back(city: str,
 
         The LLM does NOT control this parameter.
 
+    meridiem:
+        Indicates whether the time is AM or PM.
+        Must be either "am" or "pm".
+        Required for absolute time interpretation.
+        Should be omitted (None) for relative time requests.
+
+        The LLM does NOT control this parameter.
+
+    city:
+        City of the caller.
+        Used to help determine or validate the user's timezone.
+        Extract from conversation if mentioned, otherwise infer from context if available.
+        Required for absolute time interpretation.
+        Should be omitted (None) for relative time requests.
+
+        The LLM does NOT control this parameter.
     ----------------------------
     EXECUTION RULES
     ----------------------------
@@ -715,9 +848,14 @@ async def call_back(city: str,
         - Inform the user the request cannot be completed right now
         - Offer a fallback (manual follow-up or retry later)
     """
-    headers = {
-    "x-agent-secret": settings.N1_ISC_API_KEY,
-    }
+    if type == "absolute":
+        if hour is None or meridiem is None:
+            raise ValueError("Invalid absolute time")
+
+    if type == "relative":
+        if value is None or unit is None:
+            raise ValueError("Invalid relative time")
+        
     payload = {
         "type": type,
         "value": value,
@@ -725,19 +863,15 @@ async def call_back(city: str,
         "hour": hour,
         "meridiem": meridiem,
         "city": city,
-        "contact_phone": ctx.session.userdata.phone, #TODO QUERY - Feature for callback on different number? Misuse implications?,
+        "contact_phone": ctx.session.userdata.phone if ctx.session.userdata.phone else "test-call", #TODO QUERY - Feature for callback on different number? Misuse implications?
         "conversation_id": ctx.session.userdata.call_id,
         "agentId": ctx.session.userdata.agent_id,
-        "current_utc_time":  datetime.now(timezone.utc).strftime("%Y-%m-%dT%H:%M:%SZ")
+        "current_utc_time": datetime.now(timezone.utc).strftime("%Y-%m-%dT%H:%M:%SZ")
     }
-    return await _request(
-        "POST",
-        f"{settings.N3_ISC_URL}/voice-callback",
-        headers=headers,
-        json=payload
-    )
 
-@llm.function_tool
+    return await n3_api.post("/voice-callback", payload)
+
+@tool("do_not_call")
 async def do_not_call(reason: str,
                       ctx: RunContext):
     """Use this tool to mark that the user should not be called back. Only use this tool if the user has explicitly stated that they do not want a callback, or if you have been instructed to do so by the user. Do not use this tool for any other reason.
@@ -757,7 +891,7 @@ async def do_not_call(reason: str,
         headers=headers,
         json=payload
     )
-@llm.function_tool
+@tool("transfer_to_human")
 async def transfer_to_human(outbound_trunk: str, ctx: RunContext) -> None:
     """Called when the user asks to speak to a human agent. This will put the user on
         hold while the supervisor is connected.

@@ -1,4 +1,5 @@
 import asyncio
+import time
 import uuid
 import logging
 import json
@@ -7,6 +8,7 @@ from dataclasses import dataclass
 
 from livekit import api
 from livekit.plugins import noise_cancellation
+from livekit.plugins import dtln
 from livekit.agents import (metrics,
                             JobRequest,
                             function_tool,
@@ -18,12 +20,14 @@ from livekit.agents import (metrics,
                             MetricsCollectedEvent,
                             RoomInputOptions)
 
-from app.agents import agent_metrics, UserData, AgentConfig, CallDetails
+from app.agents import LeadContext, LeadData, AgentConfig, CallDetails
 from app.agents.factory.agent import AgentFactory
 from app.models import call_models
 from app.shared import schemas
 from app.shared.settings import get_settings
 from app.utils.requests import _request
+from app.utils import deepfilter
+from app.utils.timer import Timer
 
 settings = get_settings()
 logger = logging.getLogger(__name__)
@@ -51,33 +55,6 @@ async def inbound_entrypoint(ctx: JobContext):
     await ctx.connect(auto_subscribe=AutoSubscribe.AUDIO_ONLY)
     inactivity_task: asyncio.Task | None = None
     egress_info=None
-    # @session.on("metrics_collected")
-    # def _on_metrics_collected(ev: MetricsCollectedEvent):
-    #     usage_collector.collect(ev.metrics)
-        
-    #     metrics_handlers = {
-    #         "stt_metrics": agent_metrics.print_stt_metrics,
-    #         "llm_metrics": agent_metrics.print_llm_metrics,
-    #         "tts_metrics": agent_metrics.print_tts_metrics,
-    #         "vad_metrics": agent_metrics.print_vad_metrics,
-    #         "eou_metrics": agent_metrics.print_eou_metrics,
-    #     }
-    # @session.on("user_state_changed")
-    # def _user_state_changed(ev: UserStateChangedEvent):
-    #     return None
-    #     nonlocal inactivity_task
-    #     if ev.new_state == "away":
-    #         inactivity_task = asyncio.create_task(user_presence_task())
-    #         return inactivity_task
-
-    #     # ev.new_state: listening, speaking, ..
-    #     if ev.new_state=="speaking" and inactivity_task is not None:
-    #         inactivity_task.cancel()
-
-        
-    #     handler = metrics_handlers.get(ev.metrics.type)
-    #     if handler:
-    #         handler(ev.metrics)
     
     async def wait_for_egress():
         for _ in range(10): # Try for 30 seconds
@@ -104,79 +81,142 @@ async def inbound_entrypoint(ctx: JobContext):
     # Example: resolve from headers / room metadata / API
     metadata = json.loads(ctx.job.metadata)
     agent_id = metadata["agent_id"]
+    admin_id = metadata["admin_id"] 
+    lead_phone_number = None 
+    call_type = metadata["call_type"]
 
-    print("*"*10,"\n")
     print(f"Received Agent Metadata:\n {metadata}\n")
-    print("*"*10,"\n")
-    print(f"Starting session with agent_id: {agent_id}")
 
-    user_data = await AgentFactory.get_user_data(agent_id)
-    user_data.agent_id = agent_id
-    agent_config = await AgentFactory.load_agent_config(user_data,agent_id)
-    user_data.outbound_trunk_id = agent_config.outbound_trunk_id
-    user_data.human_escalation_phone = agent_config.human_phone_number
-    user_data.admin_id = agent_config.admin_id
-    agent_config.call_type = metadata["call_type"]
+    agent_config = await AgentFactory.load_agent_config(agent_id=agent_id)
+    agent_config.campaign_id = metadata.get("campaign_id", None)
+    agent_config.call_type = call_type
+
+    #~~~~~~~~##~~~~~~~~#
+    #~~~~~~~~##~~~~~~~~#
+
+
+    #~~~~~~~~##~~~~~~~~#    
+    #~~~~~~~~##~~~~~~~~#
 
     # Start Egress Service if recording allowed
     if agent_config.allow_recording is True:
         egress_info = await start_audio_only_egress(ctx)
 
+    if "outbound" in call_type:
+        lead_phone_number = metadata["phone_number"] 
+    else: # widget, test-inbound, test-widget does not have phone number 
+        lead_phone_number = metadata.get("phone_number", None) # In some cases, the phone number may not be available in metadata for inbound calls
+    lead_context: LeadContext = await AgentFactory.get_lead_context(agent_id=agent_id,
+                                                                    admin_id=admin_id,
+                                                                    user_phone_number=lead_phone_number)
+    lead_context.data.agent_id = agent_config.agent_id
+    lead_context.data.admin_id = agent_config.admin_id
+    lead_context.data.user_id = agent_config.user_id
+    lead_context.data.outbound_trunk_id = agent_config.outbound_trunk_id
+    lead_context.data.human_escalation_phone = agent_config.human_phone_number
+    print(f"Lead Data: \n{lead_context.data}")
+    print(f"Lead Summary: \n{lead_context.summary}")
     session = AgentSession(
         preemptive_generation=True, 
-        userdata=user_data,
+        userdata=lead_context.data,
         user_away_timeout=10)
     
-    agent = AgentFactory.from_config(agent_config)
-    await session.start(
-        room=ctx.room,
-        agent=agent,
-        room_input_options=RoomInputOptions(
-            noise_cancellation=noise_cancellation.BVCTelephony(),
-            close_on_disconnect=False,
-        ),
-    )
+    agent = AgentFactory.from_config(cfg=agent_config, lead_ctx=lead_context)
+
+    
+    print(f"Starting session with agent_id: {agent_id}")
+    with Timer("Session Startup"):
+        await session.start(
+            room=ctx.room,
+            agent=agent,
+            room_input_options=RoomInputOptions(
+                noise_cancellation=noise_cancellation.BVCTelephony(),
+                close_on_disconnect=False,
+            ),
+        )
+    print("Session started")
 
 
-    async def user_presence_task():
-        # try to ping the user 3 times, if we get no answer, close the session
-        logger.info("User presence task started due to inactivity.")
-        for _ in range(3):
-            await session.generate_reply(
-                instructions=(
-                    "The user has been inactive. Politely check if the user is still present."
-                )
-            )
-            await asyncio.sleep(10)
-        logger.info("Session closed due to user inactivity.")
-        session.shutdown()
 
 
     if metadata["call_type"] not in settings.DEV.SIP_EXCLUDED_CALL_TYPES:
         remote_participant = await ctx.wait_for_participant()
         if remote_participant.attributes.get("sip.phoneNumber", None):
-            user_data.user_timezone = await AgentFactory.get_time_from_phone(remote_participant.attributes["sip.phoneNumber"])
+            lead_context.data.user_timezone = await AgentFactory.get_time_from_phone(remote_participant.attributes["sip.phoneNumber"])
             agent_config = await update_sip_context(ctx, agent_config)
-            await call_models.inbound_handler(agent_config, session)
+            await call_models.sip_handler(agent_config, session)
     else:
         await call_models.test_inbound_handler(agent_config, session)
 
     # If a graph workflow is active, the first AgentTask node (e.g. 'Greetings')
     # will naturally handle generating the system greeting via LLM prompt rules.
     if not getattr(agent_config, 'workflow_graph_json', None):
-        await session.say(agent_config.greeting, allow_interruptions=False)
+        await session.say(agent_config.greeting.inbound if "inbound" in  call_type else agent_config.greeting.outbound, allow_interruptions=True)
         # await session.generate_reply(instructions="Confirm the user is connected and greet them warmly.")
 
-    if agent_config.max_duration and agent_config.max_duration>0:
-        asyncio.create_task(session_timeout_monitor(ctx, agent_config.max_duration))
+    if agent_config.conv_behaviour and agent_config.conv_behaviour.max_duration_seconds and agent_config.conv_behaviour.max_duration_seconds > 0:
+        logger.info(f"Setting up hard timeout for {agent_config.conv_behaviour.max_duration_seconds} seconds")
+        asyncio.create_task(session_timeout_monitor(ctx, session, agent_config.conv_behaviour.max_duration_seconds, agent_config.conv_behaviour.max_duration_message))
 
     async def log_usage():
         summary = usage_collector.get_summary()
-        logger.info(f"Usage: {summary}")
+        logger.info(f"Usage: \n{summary}")
         await call_models.save_usage_summary(session.userdata.call_id, summary)
 
     ctx.add_shutdown_callback(post_call_tasks)
 
+    @session.on("metrics_collected")
+    def _on_metrics_collected(ev: MetricsCollectedEvent):
+        usage_collector.collect(ev.metrics)
+        
+        # metrics_handlers = {
+        #     "stt_metrics": agent_metrics.print_stt_metrics,
+        #     "llm_metrics": agent_metrics.print_llm_metrics,
+        #     "tts_metrics": agent_metrics.print_tts_metrics,
+        #     "vad_metrics": agent_metrics.print_vad_metrics,
+        #     "eou_metrics": agent_metrics.print_eou_metrics,
+        # }
+        
+        # handler = metrics_handlers.get(ev.metrics.type)
+        # if handler:
+        #     handler(ev.metrics)
+
+    async def user_presence_task(delay: float):
+        # try to ping the user 3 times, if we get no answer, close the session
+        logger.info("User presence task started due to inactivity.")
+        max_silence = agent_config.conv_behaviour.end_after_silence_seconds if agent_config.conv_behaviour and agent_config.conv_behaviour.end_after_silence_seconds else None
+        timer_start = time.monotonic()
+
+        def is_timeout_reached():
+            # Handle "infinite silence" cases
+            if max_silence is None or max_silence < 1:
+                return False
+            return (time.monotonic() - timer_start) >= max_silence
+
+        max_retries = agent_config.conv_behaviour.num_retry_before_end if agent_config.conv_behaviour and agent_config.conv_behaviour.num_retry_before_end is not None else 1
+        while not is_timeout_reached():
+            for _ in range(max_retries):
+                await asyncio.sleep(delay) # Wait for the user to respond
+                await session.generate_reply(
+                    instructions=(
+                        "The user has been inactive. Politely check if the user is still present."
+                    )
+                )
+        logger.info("Session closed due to user inactivity.")
+        ctx.shutdown(reason="User Inactive")
+        
+    @session.on("user_state_changed")
+    def _user_state_changed(ev: UserStateChangedEvent):
+        if agent_config.conv_behaviour is None or agent_config.conv_behaviour.take_turn_after_silence_seconds is None or agent_config.conv_behaviour.take_turn_after_silence_seconds <= 0:
+            return
+        nonlocal inactivity_task
+        if ev.new_state == "away":
+            inactivity_task = asyncio.create_task(user_presence_task(agent_config.conv_behaviour.take_turn_after_silence_seconds))
+            return inactivity_task
+
+        # ev.new_state: listening, speaking, ..
+        if ev.new_state=="speaking" and inactivity_task is not None:
+            inactivity_task.cancel()
 async def post_call_analysis(session: AgentSession):
     headers = {
         "Content-Type": "application/json",
@@ -189,20 +229,31 @@ async def post_call_analysis(session: AgentSession):
         f"{settings.P1_ISC_URL}/post-call-analysis",
         headers=headers,
         json={
-            "transcript": transcript
+            "transcript": transcript,
+            "admin_id": session.userdata.admin_id,
         })
     analysis = schemas.PostCallAnalysis(**res["data"])
     logger.info(f"Post-call analysis: {analysis}")
     await call_models.save_analysis(session.userdata.call_id, analysis)
+    await call_models.upsert_voice_call_lead(user_id=session.userdata.user_id, 
+                                             admin_id=session.userdata.admin_id, 
+                                             agent_id=session.userdata.agent_id,
+                                             phone=session.userdata.phone,
+                                             agent_summary=analysis.summary,
+                                             )
 
 
-async def session_timeout_monitor(ctx: JobContext, timeout: int):
+async def session_timeout_monitor(ctx: JobContext, session: AgentSession, timeout: int, message: str):
     await asyncio.sleep(timeout)
-    print(f"Hard timeout reached ({timeout}s). Shutting down.")
-    
-    # You can play a "Goodbye" TTS here if you have a reference to the session
-    # then kill the job.
-    ctx.shutdown()
+    logger.warning(f"Hard timeout reached ({timeout}s). Shutting down.")
+    try:
+        # Give them a polite heads up before killing the call
+        await session.say(message, allow_interruptions=False)
+        # Give the TTS a moment to actually send the audio bytes
+        await asyncio.sleep(2) 
+    except Exception as e:
+        logger.error(f"Failed to say goodbye: {e}")
+    ctx.shutdown(reason="Hard timeout Reached!")
 
 #TODO REDUNDANT
 async def update_sip_context(ctx: JobContext, 
@@ -212,7 +263,7 @@ async def update_sip_context(ctx: JobContext,
     caller = None
     for p in ctx.room.remote_participants.values():
         print(f"Remote Participants: \n {p}")
-        if p.identity.startswith("sip_"):
+        if "sip" in p.identity:
             caller = p
             break
 
@@ -281,7 +332,8 @@ async def start_audio_only_egress(ctx: JobContext):
 #TODO MOVE
 import os
 import base64
-from livekit.agents.telemetry import set_tracer_provider
+from opentelemetry import trace  # Import the global trace entry point
+from livekit.agents.telemetry import set_tracer_provider as set_livekit_tracer
 
 def setup_langfuse(
     host: str | None = None, public_key: str | None = None, secret_key: str | None = None
@@ -303,4 +355,6 @@ def setup_langfuse(
 
     trace_provider = TracerProvider()
     trace_provider.add_span_processor(BatchSpanProcessor(OTLPSpanExporter()))
-    set_tracer_provider(trace_provider)
+    
+    set_livekit_tracer(trace_provider)
+    trace.set_tracer_provider(trace_provider)
