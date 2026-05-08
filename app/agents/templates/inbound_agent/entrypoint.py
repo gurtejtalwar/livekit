@@ -8,6 +8,7 @@ from dataclasses import dataclass
 from livekit import api
 from livekit.plugins import noise_cancellation
 from livekit.agents import (metrics,
+                            JobRequest,
                             function_tool,
                             JobContext,
                             AutoSubscribe,
@@ -46,7 +47,8 @@ class BGTasks:
 
 @inbound_server.rtc_session(agent_name="inbound-agent")
 async def inbound_entrypoint(ctx: JobContext):
-    setup_langfuse()  # Call this at the start of the session to ensure telemetry is set up
+    # setup_langfuse()  # Call this at the start of the session to ensure telemetry is set up
+    await ctx.connect(auto_subscribe=AutoSubscribe.AUDIO_ONLY)
     inactivity_task: asyncio.Task | None = None
     egress_info=None
     # @session.on("metrics_collected")
@@ -98,7 +100,6 @@ async def inbound_entrypoint(ctx: JobContext):
         await call_models.on_call_ended(session, recording_url)
         await post_call_analysis(session)
 
-    await ctx.connect(auto_subscribe=AutoSubscribe.AUDIO_ONLY)
 
     # Example: resolve from headers / room metadata / API
     metadata = json.loads(ctx.job.metadata)
