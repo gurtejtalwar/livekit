@@ -913,9 +913,6 @@ async def transfer_to_human(outbound_trunk: str, ctx: RunContext) -> None:
         "Please hold while I connect you to a human agent.", allow_interruptions=False
     )
     try:
-        assert ctx.session.userdata.human_escalation_phone is not None
-        assert ctx.session.userdata.outbound_trunk_id is not None
-        logger.debug("Escalation Phone: %s, Outbound Trunk: %s",ctx.session.userdata.human_escalation_phone, ctx.session.userdata.outbound_trunk_id)
         result = await WarmTransferTask(
             target_phone_number=ctx.session.userdata.human_escalation_phone,
             sip_trunk_id=ctx.session.userdata.outbound_trunk_id,
