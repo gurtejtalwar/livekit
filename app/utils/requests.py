@@ -29,6 +29,8 @@ async def _request(method: str, url: str, *, headers: dict, params=None, json=No
     #     if json:
     #         span.set_attribute("http.request_body", json_lib.dumps(json))
 
+        start_time = time.time()
+
         try:
             async with httpx.AsyncClient(timeout=10) as client:
                 resp = await client.request(
@@ -76,9 +78,9 @@ async def _request(method: str, url: str, *, headers: dict, params=None, json=No
         except Exception as e:
             latency_ms = int((time.time() - start_time) * 1000)
 
-            span.set_attribute("http.latency_ms", latency_ms)
-            span.set_attribute("error", str(e))
-            span.set_status(Status(StatusCode.ERROR))
+            # span.set_attribute("http.latency_ms", latency_ms)
+            # span.set_attribute("error", str(e))
+            # span.set_status(Status(StatusCode.ERROR))
 
             raise RuntimeError({
                 "type": "UnknownError",
@@ -87,7 +89,7 @@ async def _request(method: str, url: str, *, headers: dict, params=None, json=No
             })
 
 class APIClient:
-    def __init__(self, base_url: str, api_key: str):
+    def __init__(self, base_url: str, api_key: str=None):
         self.base_url = base_url
         self.headers = {
             "x-agent-secret": api_key,
@@ -95,7 +97,7 @@ class APIClient:
         }
 
     async def post(self, path: str, payload: dict):
-        return await _request(
+        return await _request( 
             "POST",
             f"{self.base_url}{path}",
             headers=self.headers,

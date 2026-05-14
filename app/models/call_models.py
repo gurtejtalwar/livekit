@@ -1,6 +1,7 @@
 import time
 import json
 import logging
+import asyncio
 from bson import ObjectId
 from datetime import datetime
 
@@ -298,37 +299,40 @@ async def on_call_ended(
         if isinstance(item, llm.FunctionCall)
     ]   
 
-    VoiceCalls.objects(
-        id=session.userdata.call_id,
-        status="in_progress",  # protects against double-finalization
-    ).update_one(
-        set__status="completed",
-        set__call_duration_secs=time.time() - session._started_at,
-        set__message_count=len(chat_messages),
-        set__tools_count=len(tool_calls),
-        set__call_successful="success",
-        set__transcript_summary="", #TODO analysis_raw.get("transcript_summary"),
-        set__call_summary_title="", #TODO analysis_raw.get("call_summary_title"),
-        set__updated_at=datetime.utcnow(),
-    )   
+    def update_db():
+        VoiceCalls.objects(
+            id=session.userdata.call_id,
+            status="in_progress",  # protects against double-finalization
+        ).update_one(
+            set__status="completed",
+            set__call_duration_secs=time.time() - session._started_at,
+            set__message_count=len(chat_messages),
+            set__tools_count=len(tool_calls),
+            set__call_successful="success",
+            set__transcript_summary="", #TODO analysis_raw.get("transcript_summary"),
+            set__call_summary_title="", #TODO analysis_raw.get("call_summary_title"),
+            set__updated_at=datetime.utcnow(),
+        )   
 
-    # -------------------------
-    # Build transcript objects
-    # -------------------------
-    transcript_docs = build_structured_transcript(session.history.items)
+        # -------------------------
+        # Build transcript objects
+        # -------------------------
+        transcript_docs = build_structured_transcript(session.history.items)
 
-    # -------------------------
-    # Update VoiceCallDetails
-    # -------------------------
-    VoiceCallDetails.objects(
-        call_id=str(session.userdata.call_id)
-    ).update_one(
-        set__status="completed",
-        set__transcript=transcript_docs,
-        set__call_duration_secs=time.time() - session._started_at,
-        set__recording_url= recording_url,
-        set__updated_at=datetime.utcnow(),
-    )
+        # -------------------------
+        # Update VoiceCallDetails
+        # -------------------------
+        VoiceCallDetails.objects(
+            call_id=str(session.userdata.call_id)
+        ).update_one(
+            set__status="completed",
+            set__transcript=transcript_docs,
+            set__call_duration_secs=time.time() - session._started_at,
+            set__recording_url= recording_url,
+            set__updated_at=datetime.utcnow(),
+        )
+
+    await asyncio.to_thread(update_db)
 
 def normalize_chat_content(content) -> str | None: #TODO Move to utils
     if not content:
@@ -444,48 +448,54 @@ def build_transcript_string(history_items: list) -> str:
     return "\n\n".join(lines)
 
 async def save_usage_summary(call_id: str, summary: UsageSummary):
-    try:
-        call_details: VoiceCallDetails = VoiceCallDetails.objects.get(call_id=call_id)
-    except DoesNotExist:
-        logger.warning(f"Call Details not found for call_id {call_id} when saving usage summary")
-        return
-    try:
-        call_details.lk_metadata.usage = UsageSummaryEmbedded(
-            llm_prompt_tokens=summary.llm_prompt_tokens,
-            llm_prompt_cached_tokens=summary.llm_prompt_cached_tokens,
+    def _save():
+        try:
+            call_details: VoiceCallDetails = VoiceCallDetails.objects.get(call_id=call_id)
+        except DoesNotExist:
+            logger.warning(f"Call Details not found for call_id {call_id} when saving usage summary")
+            return
+        try:
+            call_details.lk_metadata.usage = UsageSummaryEmbedded(
+                llm_prompt_tokens=summary.llm_prompt_tokens,
+                llm_prompt_cached_tokens=summary.llm_prompt_cached_tokens,
 
-            llm_input_audio_tokens=summary.llm_input_audio_tokens,
-            llm_input_cached_audio_tokens=summary.llm_input_cached_audio_tokens,
+                llm_input_audio_tokens=summary.llm_input_audio_tokens,
+                llm_input_cached_audio_tokens=summary.llm_input_cached_audio_tokens,
 
-            llm_input_text_tokens=summary.llm_input_text_tokens,
-            llm_input_cached_text_tokens=summary.llm_input_cached_text_tokens,
+                llm_input_text_tokens=summary.llm_input_text_tokens,
+                llm_input_cached_text_tokens=summary.llm_input_cached_text_tokens,
 
-            llm_input_image_tokens=summary.llm_input_image_tokens,
-            llm_input_cached_image_tokens=summary.llm_input_cached_image_tokens,
+                llm_input_image_tokens=summary.llm_input_image_tokens,
+                llm_input_cached_image_tokens=summary.llm_input_cached_image_tokens,
 
-            llm_completion_tokens=summary.llm_completion_tokens,
+                llm_completion_tokens=summary.llm_completion_tokens,
 
-            llm_output_audio_tokens=summary.llm_output_audio_tokens,
-            llm_output_image_tokens=summary.llm_output_image_tokens,
-            llm_output_text_tokens=summary.llm_output_text_tokens,
+                llm_output_audio_tokens=summary.llm_output_audio_tokens,
+                llm_output_image_tokens=summary.llm_output_image_tokens,
+                llm_output_text_tokens=summary.llm_output_text_tokens,
 
-            tts_characters_count=summary.tts_characters_count,
-            tts_audio_duration=summary.tts_audio_duration,
-            stt_audio_duration=summary.stt_audio_duration,
-        )
-        call_details.save()
-    except Exception as e:
-        logger.error("Error saving usage summary:\n %s", e)
+                tts_characters_count=summary.tts_characters_count,
+                tts_audio_duration=summary.tts_audio_duration,
+                stt_audio_duration=summary.stt_audio_duration,
+            )
+            call_details.save()
+        except Exception as e:
+            logger.error("Error saving usage summary:\n %s", e)
+    
+    await asyncio.to_thread(_save)
 
 async def save_analysis(call_id: str, analysis: schemas.PostCallAnalysis):
-    try:
-        call_details: VoiceCallDetails = VoiceCallDetails.objects.get(call_id=call_id)
-    except DoesNotExist:
-        logger.warning(f"CallDetails not found for call_id {call_id} when saving analysis")
-        return
-    analysis = Analysis(**analysis.model_dump())
-    call_details.analysis = analysis
-    call_details.save()
+    def _save():
+        try:
+            call_details: VoiceCallDetails = VoiceCallDetails.objects.get(call_id=call_id)
+        except DoesNotExist:
+            logger.warning(f"CallDetails not found for call_id {call_id} when saving analysis")
+            return
+        analysis_obj = Analysis(**analysis.model_dump())
+        call_details.analysis = analysis_obj
+        call_details.save()
+    
+    await asyncio.to_thread(_save)
 
 
 async def sip_handler(config: AgentConfig, session: AgentSession):

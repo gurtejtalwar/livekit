@@ -76,6 +76,7 @@ def tool(name: str):
 
 n3_api = APIClient(settings.N3_ISC_URL, settings.N3_ISC_API_KEY)
 n1_api = APIClient(settings.N1_ISC_URL, settings.N1_ISC_API_KEY)
+p1_api = APIClient(settings.P1_ISC_URL)
 
 class KnowledgeBase:
     def __init__(self, index, chunks):
@@ -139,20 +140,16 @@ def load_knowledge_base(resource_centre_id: str) -> KnowledgeBase:
     KB_CACHE[resource_centre_id] = kb
     return kb
 
-# def make_ask_knowledge_base_tool(kb: KnowledgeBase):
 
-#     @tool("ask_knowledge_base")
-#     async def ask_knowledge_base(question: str):
-#         with Timer("KB Tool Total"):
-#             with Timer("Embed Query"):
-#                 q_emb = embed(question)
+@tool("ask_knowledge_base")
+async def ask_knowledge_base(question: str):
+    """Query the knowledge base for an answer to the user's question."""
+    payload = {
+        "question": question,
+    }
 
-#             with Timer("FAISS Search"):
-#                 results = kb.search(q_emb, k=3)
+    return await p1_api.post("/rc/query", payload)
 
-#             return "\n".join(results)
-
-#     return ask_knowledge_base
 
 #TODO Pre call tasks
 def get_faiss_index_and_chunks():

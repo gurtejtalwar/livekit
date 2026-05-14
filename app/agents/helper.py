@@ -1,5 +1,6 @@
-import requests
+import httpx
 import logging
+import asyncio
 from bson import ObjectId
 
 from app.shared import models
@@ -10,7 +11,7 @@ from app.models.call_models import get_lead_by_phone, get_summary_by_phone_numbe
 
 logger = logging.getLogger(__name__)
 
-def fetch_json_from_s3(url: str) -> dict:
+async def fetch_json_from_s3(url: str) -> dict:
     """
     Fetch JSON data from a public S3 URL and return it as a Python dictionary.
 
@@ -21,11 +22,12 @@ def fetch_json_from_s3(url: str) -> dict:
         dict: Parsed JSON data
 
     Raises:
-        requests.exceptions.RequestException: If the request fails
+        httpx.HTTPStatusError: If the request fails
         ValueError: If the response is not valid JSON
     """
-    response = requests.get(url, timeout=10)
-    response.raise_for_status()  # Raises error for bad status codes
+    async with httpx.AsyncClient() as client:
+        response = await client.get(url, timeout=10)
+        response.raise_for_status()  # Raises error for bad status codes
 
     try:
         return response.json()
@@ -56,33 +58,40 @@ async def get_lead_agent_and_overall_summary(agent_id: str, admin_id: str, phone
     return summary
 
 async def load_agent_runtime_config(agent_id: str):
-    agent: models.VoiceAgent = models.VoiceAgent.objects(
-        id=ObjectId(agent_id)).first()
+    def get_agent():
+        return models.VoiceAgent.objects(id=ObjectId(agent_id)).first()
+    
+    agent: models.VoiceAgent = await asyncio.to_thread(get_agent)
     if not agent:
         raise ValueError("Agent not found")
     if agent.status!="active":
         logger.info("Agent is Inactive")
         return ValueError("Agent is Inactive") #TODO need to find error interceptor for LK instead of returning
     
-    config_doc: models.VoiceAgentConfig = models.VoiceAgentConfig.objects(
-        agentId=agent.id).first()
-    voice_config_doc: models.VoiceAgentVoiceConfig = models.VoiceAgentVoiceConfig.objects(
-        agentId=agent.id).first()
-    identity_doc: models.VoiceAgentIdentity = models.VoiceAgentIdentity.objects(agentId=agent.id).first()
-    advanced_doc: models.VoiceAgentAdvancedSettings = models.VoiceAgentAdvancedSettings.objects(agentId=agent.id).first()
-    escalation_doc: models.VoiceAgentEscalation = models.VoiceAgentEscalation.objects(agentId=agent.id).first()
+    def get_docs():
+        return (
+            models.VoiceAgentConfig.objects(agentId=agent.id).first(),
+            models.VoiceAgentVoiceConfig.objects(agentId=agent.id).first(),
+            models.VoiceAgentIdentity.objects(agentId=agent.id).first(),
+            models.VoiceAgentAdvancedSettings.objects(agentId=agent.id).first(),
+            models.VoiceAgentEscalation.objects(agentId=agent.id).first()
+        )
+    
+    config_doc, voice_config_doc, identity_doc, advanced_doc, escalation_doc = await asyncio.to_thread(get_docs)
     # voice_doc: models.VoiceAgentVoiceConfig = models.VoiceAgentVoiceConfig.objects(
     #     agentId=agent.id).first()
 
     workflow_doc = None
     if config_doc.isWorkflowEnabled:
         workflow_s3_url = config_doc.workflowS3Url
-        workflow_doc = fetch_json_from_s3(workflow_s3_url) if workflow_s3_url else None
+        workflow_doc = await fetch_json_from_s3(workflow_s3_url) if workflow_s3_url else None
     
     human_phone_number = None
     if escalation_doc.humanEscalationEnabled is True and escalation_doc.teamMembers:
         team_member_id = escalation_doc.teamMembers[0]["_id"]
-        voicebot_settings_doc: models.VoiceBotSettings = models.VoiceBotSettings.objects(userId=ObjectId(team_member_id)).first()
+        def get_voicebot_settings():
+            return models.VoiceBotSettings.objects(userId=ObjectId(team_member_id)).first()
+        voicebot_settings_doc: models.VoiceBotSettings = await asyncio.to_thread(get_voicebot_settings)
         human_phone_number = voicebot_settings_doc.phone_number
     # ---------- SYSTEM PROMPT ---------- 
     system_prompt = (
